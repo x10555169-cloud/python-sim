@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Python 課堂模擬</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Python 課堂模擬</h1>
+    <div id="conn" class="pill">連線中…</div>
+  </header>
+
+  <main>
+    <section class="card" id="controlCard">
+      <h2>模擬控制</h2>
+      <div class="row">
+        <button id="btnStart" class="primary">開始模擬</button>
+        <button id="btnStop">停止模擬</button>
+        <input id="token" type="password" placeholder="管理密碼（若有設定）" autocomplete="off">
+      </div>
+      <dl class="stats">
+        <div><dt>狀態</dt><dd id="stRunning">—</dd></div>
+        <div><dt>執行次數</dt><dd id="stTick">—</dd></div>
+        <div><dt>Run ID</dt><dd id="stRun">—</dd></div>
+        <div><dt>資料來源</dt><dd id="stSource">—</dd></div>
+      </dl>
+      <p class="hint" id="apiMsg"></p>
+    </section>
+
+    <section class="card">
+      <h2>Python 最新訊息</h2>
+      <p id="latest" class="latest">等待 Python 送出資料…</p>
+      <p class="hint" id="genAt"></p>
+      <dl class="stats" id="latestStats"></dl>
+    </section>
+    <section class="card">
+      <h2>各組生產線分析 <span class="sub">（各站平均作業秒數，<mark>標色</mark> = 瓶頸站）</span></h2>
+      <div class="table-wrap"><table id="lines"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>結果紀錄</h2>
+      <ol id="log" class="log"></ol>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

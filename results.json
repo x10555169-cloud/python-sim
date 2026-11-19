@@ -1,0 +1,1585 @@
+{
+ "status": {
+  "running": false,
+  "run_id": "github-actions",
+  "tick": 5,
+  "message": "[10:04:50] Python 第 5 次執行：讀到 288 筆事件、6 組；產出率最高為 G05（TEST2）每小時 21.8 件，其瓶頸站 ST08（平均 106.7 秒）"
+ },
+ "results": [
+  {
+   "id": 5,
+   "tick": 5,
+   "message": "[10:04:50] Python 第 5 次執行：讀到 288 筆事件、6 組；產出率最高為 G05（TEST2）每小時 21.8 件，其瓶頸站 ST08（平均 106.7 秒）",
+   "data": {
+    "events": 288,
+    "groups": 6,
+    "stations": [
+     "ST01",
+     "ST02",
+     "ST03",
+     "ST04",
+     "ST05",
+     "ST06",
+     "ST07",
+     "ST08",
+     "ST09"
+    ],
+    "lines": [
+     {
+      "group_id": "G01",
+      "batch": "TEST2",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST02": 38.8,
+       "ST03": 78.8,
+       "ST04": 60.8,
+       "ST01": 59.7,
+       "ST05": 44.0,
+       "ST06": 25.9,
+       "ST07": 57.0,
+       "ST08": 77.2,
+       "ST09": 96.7
+      },
+      "count_by_station": {
+       "ST02": 4,
+       "ST03": 4,
+       "ST04": 4,
+       "ST01": 4,
+       "ST05": 4,
+       "ST06": 4,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 4
+      },
+      "bottleneck": "ST09",
+      "bottleneck_ct": 96.7,
+      "balance_pct": 61.9,
+      "finished": 4,
+      "wip": 0,
+      "elapsed_min": 13.2,
+      "throughput_per_hr": 18.2,
+      "last_finish": "2026-11-03T07:37:14.751000+00:00"
+     },
+     {
+      "group_id": "G02",
+      "batch": "TEST1",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST04": 35.7,
+       "ST02": 50.6,
+       "ST03": 65.5,
+       "ST01": 64.0,
+       "ST06": 46.2,
+       "ST05": 46.1,
+       "ST07": 70.0,
+       "ST08": 81.2,
+       "ST09": 30.3
+      },
+      "count_by_station": {
+       "ST04": 4,
+       "ST02": 4,
+       "ST03": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 4,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 4
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 81.2,
+      "balance_pct": 67.0,
+      "finished": 4,
+      "wip": 0,
+      "elapsed_min": 11.9,
+      "throughput_per_hr": 20.1,
+      "last_finish": "2026-11-02T07:57:39.555000+00:00"
+     },
+     {
+      "group_id": "G02",
+      "batch": "TEST2",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST01": 51.7,
+       "ST02": 45.5,
+       "ST04": 50.7,
+       "ST03": 47.3,
+       "ST06": 64.0,
+       "ST05": 59.7,
+       "ST07": 40.0,
+       "ST08": 54.4,
+       "ST09": 40.7
+      },
+      "count_by_station": {
+       "ST01": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST03": 4,
+       "ST06": 4,
+       "ST05": 4,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 4
+      },
+      "bottleneck": "ST06",
+      "bottleneck_ct": 64.0,
+      "balance_pct": 78.8,
+      "finished": 4,
+      "wip": 0,
+      "elapsed_min": 11.1,
+      "throughput_per_hr": 21.6,
+      "last_finish": "2026-11-03T07:35:08.172000+00:00"
+     },
+     {
+      "group_id": "G03",
+      "batch": "TEST2",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST03": 60.5,
+       "ST01": 70.8,
+       "ST02": 91.1,
+       "ST04": 71.0,
+       "ST06": 54.9,
+       "ST05": 17.8,
+       "ST07": 109.0,
+       "ST08": 83.8,
+       "ST09": 119.9
+      },
+      "count_by_station": {
+       "ST03": 4,
+       "ST01": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST06": 4,
+       "ST05": 4,
+       "ST07": 6,
+       "ST08": 3,
+       "ST09": 3
+      },
+      "bottleneck": "ST09",
+      "bottleneck_ct": 119.9,
+      "balance_pct": 62.9,
+      "finished": 3,
+      "wip": 1,
+      "elapsed_min": 17.0,
+      "throughput_per_hr": 10.6,
+      "last_finish": "2026-11-03T07:40:59.979000+00:00"
+     },
+     {
+      "group_id": "G05",
+      "batch": "TEST1",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST03": 38.4,
+       "ST02": 57.5,
+       "ST04": 71.5,
+       "ST01": 84.7,
+       "ST06": 40.5,
+       "ST05": 98.4,
+       "ST07": 146.0,
+       "ST08": 39.8,
+       "ST09": 11.7
+      },
+      "count_by_station": {
+       "ST03": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 5,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 3
+      },
+      "bottleneck": "ST07",
+      "bottleneck_ct": 146.0,
+      "balance_pct": 44.8,
+      "finished": 3,
+      "wip": 1,
+      "elapsed_min": 19.3,
+      "throughput_per_hr": 9.3,
+      "last_finish": "2026-11-02T08:05:02.085000+00:00"
+     },
+     {
+      "group_id": "G05",
+      "batch": "TEST2",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST04": 48.9,
+       "ST03": 76.0,
+       "ST02": 62.4,
+       "ST06": 9.6,
+       "ST01": 56.7,
+       "ST05": 39.2,
+       "ST07": 50.7,
+       "ST08": 106.7,
+       "ST09": 67.8
+      },
+      "count_by_station": {
+       "ST04": 4,
+       "ST03": 4,
+       "ST02": 4,
+       "ST06": 4,
+       "ST01": 4,
+       "ST05": 4,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 4
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 106.7,
+      "balance_pct": 53.9,
+      "finished": 4,
+      "wip": 0,
+      "elapsed_min": 11.0,
+      "throughput_per_hr": 21.8,
+      "last_finish": "2026-11-03T07:35:02.070000+00:00"
+     },
+     {
+      "group_id": "G06",
+      "batch": "TEST2",
+      "events": 41,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST03": 21.6,
+       "ST02": 42.2,
+       "ST01": 52.1,
+       "ST04": 63.2,
+       "ST08": 106.2,
+       "ST06": 23.9,
+       "ST05": 67.8,
+       "ST07": 140.6,
+       "ST09": 112.6
+      },
+      "count_by_station": {
+       "ST03": 9,
+       "ST02": 4,
+       "ST01": 4,
+       "ST04": 4,
+       "ST08": 4,
+       "ST06": 4,
+       "ST05": 4,
+       "ST07": 4,
+       "ST09": 4
+      },
+      "bottleneck": "ST07",
+      "bottleneck_ct": 140.6,
+      "balance_pct": 49.8,
+      "finished": 4,
+      "wip": 0,
+      "elapsed_min": 18.1,
+      "throughput_per_hr": 13.3,
+      "last_finish": "2026-11-03T07:42:06.475000+00:00"
+     },
+     {
+      "group_id": "G07",
+      "batch": "TEST2",
+      "events": 31,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST02": 55.0,
+       "ST01": 58.9,
+       "ST04": 43.1,
+       "ST05": 55.5,
+       "ST06": 36.2,
+       "ST03": 217.0,
+       "ST07": 66.0,
+       "ST08": 148.9,
+       "ST09": 103.0
+      },
+      "count_by_station": {
+       "ST02": 4,
+       "ST01": 4,
+       "ST04": 4,
+       "ST05": 2,
+       "ST06": 4,
+       "ST03": 1,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 4
+      },
+      "bottleneck": "ST03",
+      "bottleneck_ct": 217.0,
+      "balance_pct": 40.1,
+      "finished": 4,
+      "wip": 0,
+      "elapsed_min": 18.1,
+      "throughput_per_hr": 13.3,
+      "last_finish": "2026-11-03T07:42:04.887000+00:00"
+     }
+    ],
+    "best": {
+     "group_id": "G05",
+     "batch": "TEST2",
+     "throughput_per_hr": 21.8
+    }
+   },
+   "created_at": "2026-11-19T02:04:50.230750+00:00"
+  },
+  {
+   "id": 4,
+   "tick": 4,
+   "message": "[10:04:50] Python 第 4 次執行：讀到 230 筆事件、6 組；產出率最高為 G03（TEST2）每小時 55.0 件，其瓶頸站 ST07（平均 109.0 秒）",
+   "data": {
+    "events": 230,
+    "groups": 6,
+    "stations": [
+     "ST01",
+     "ST02",
+     "ST03",
+     "ST04",
+     "ST05",
+     "ST06",
+     "ST07",
+     "ST08",
+     "ST09"
+    ],
+    "lines": [
+     {
+      "group_id": "G01",
+      "batch": "TEST2",
+      "events": 28,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08"
+      ],
+      "avg_ct": {
+       "ST02": 38.8,
+       "ST03": 78.8,
+       "ST04": 60.8,
+       "ST01": 59.7,
+       "ST05": 44.0,
+       "ST06": 25.9,
+       "ST07": 52.7,
+       "ST08": 88.4
+      },
+      "count_by_station": {
+       "ST02": 4,
+       "ST03": 4,
+       "ST04": 4,
+       "ST01": 4,
+       "ST05": 4,
+       "ST06": 4,
+       "ST07": 3,
+       "ST08": 1
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 88.4,
+      "balance_pct": 63.5,
+      "finished": 1,
+      "wip": 3,
+      "elapsed_min": 6.5,
+      "throughput_per_hr": 9.2,
+      "last_finish": "2026-11-03T07:30:32.779000+00:00"
+     },
+     {
+      "group_id": "G02",
+      "batch": "TEST1",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST04": 35.7,
+       "ST02": 50.6,
+       "ST03": 65.5,
+       "ST01": 64.0,
+       "ST06": 46.2,
+       "ST05": 46.1,
+       "ST07": 70.0,
+       "ST08": 81.2,
+       "ST09": 30.3
+      },
+      "count_by_station": {
+       "ST04": 4,
+       "ST02": 4,
+       "ST03": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 4,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 4
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 81.2,
+      "balance_pct": 67.0,
+      "finished": 4,
+      "wip": 0,
+      "elapsed_min": 11.9,
+      "throughput_per_hr": 20.1,
+      "last_finish": "2026-11-02T07:57:39.555000+00:00"
+     },
+     {
+      "group_id": "G02",
+      "batch": "TEST2",
+      "events": 31,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST01": 51.7,
+       "ST02": 45.5,
+       "ST04": 50.7,
+       "ST03": 47.3,
+       "ST06": 64.0,
+       "ST05": 59.7,
+       "ST07": 48.7,
+       "ST08": 65.0,
+       "ST09": 3.2
+      },
+      "count_by_station": {
+       "ST01": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST03": 4,
+       "ST06": 4,
+       "ST05": 4,
+       "ST07": 3,
+       "ST08": 2,
+       "ST09": 2
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 65.0,
+      "balance_pct": 74.5,
+      "finished": 2,
+      "wip": 2,
+      "elapsed_min": 6.6,
+      "throughput_per_hr": 18.1,
+      "last_finish": "2026-11-03T07:30:39.864000+00:00"
+     },
+     {
+      "group_id": "G03",
+      "batch": "TEST2",
+      "events": 29,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07"
+      ],
+      "avg_ct": {
+       "ST03": 60.5,
+       "ST01": 70.8,
+       "ST02": 91.1,
+       "ST04": 71.0,
+       "ST06": 54.9,
+       "ST05": 20.7,
+       "ST07": 109.0
+      },
+      "count_by_station": {
+       "ST03": 4,
+       "ST01": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST06": 4,
+       "ST05": 3,
+       "ST07": 6
+      },
+      "bottleneck": "ST07",
+      "bottleneck_ct": 109.0,
+      "balance_pct": 62.6,
+      "finished": 6,
+      "wip": 0,
+      "elapsed_min": 6.6,
+      "throughput_per_hr": 55.0,
+      "last_finish": "2026-11-03T07:30:33.858000+00:00"
+     },
+     {
+      "group_id": "G05",
+      "batch": "TEST1",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST03": 38.4,
+       "ST02": 57.5,
+       "ST04": 71.5,
+       "ST01": 84.7,
+       "ST06": 40.5,
+       "ST05": 98.4,
+       "ST07": 146.0,
+       "ST08": 39.8,
+       "ST09": 11.7
+      },
+      "count_by_station": {
+       "ST03": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 5,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 3
+      },
+      "bottleneck": "ST07",
+      "bottleneck_ct": 146.0,
+      "balance_pct": 44.8,
+      "finished": 3,
+      "wip": 1,
+      "elapsed_min": 19.3,
+      "throughput_per_hr": 9.3,
+      "last_finish": "2026-11-02T08:05:02.085000+00:00"
+     },
+     {
+      "group_id": "G05",
+      "batch": "TEST2",
+      "events": 27,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08"
+      ],
+      "avg_ct": {
+       "ST04": 48.9,
+       "ST03": 76.0,
+       "ST02": 62.4,
+       "ST06": 11.0,
+       "ST01": 56.7,
+       "ST05": 39.2,
+       "ST07": 35.6,
+       "ST08": 133.3
+      },
+      "count_by_station": {
+       "ST04": 4,
+       "ST03": 4,
+       "ST02": 4,
+       "ST06": 3,
+       "ST01": 4,
+       "ST05": 4,
+       "ST07": 3,
+       "ST08": 1
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 133.3,
+      "balance_pct": 43.4,
+      "finished": 1,
+      "wip": 3,
+      "elapsed_min": 6.6,
+      "throughput_per_hr": 9.1,
+      "last_finish": "2026-11-03T07:30:36.712000+00:00"
+     },
+     {
+      "group_id": "G06",
+      "batch": "TEST2",
+      "events": 29,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08"
+      ],
+      "avg_ct": {
+       "ST03": 19.9,
+       "ST02": 42.2,
+       "ST01": 52.1,
+       "ST04": 63.2,
+       "ST08": 114.4,
+       "ST06": 23.9,
+       "ST05": 76.8,
+       "ST07": 68.9
+      },
+      "count_by_station": {
+       "ST03": 7,
+       "ST02": 4,
+       "ST01": 4,
+       "ST04": 4,
+       "ST08": 2,
+       "ST06": 4,
+       "ST05": 3,
+       "ST07": 1
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 114.4,
+      "balance_pct": 50.4,
+      "finished": 2,
+      "wip": 2,
+      "elapsed_min": 5.9,
+      "throughput_per_hr": 20.5,
+      "last_finish": "2026-11-03T07:29:51.462000+00:00"
+     },
+     {
+      "group_id": "G07",
+      "batch": "TEST2",
+      "events": 14,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07"
+      ],
+      "avg_ct": {
+       "ST02": 104.1,
+       "ST01": 58.9,
+       "ST04": 158.5,
+       "ST05": 56.2,
+       "ST06": 36.2,
+       "ST03": 217.0,
+       "ST07": 25.1
+      },
+      "count_by_station": {
+       "ST02": 2,
+       "ST01": 4,
+       "ST04": 1,
+       "ST05": 1,
+       "ST06": 4,
+       "ST03": 1,
+       "ST07": 1
+      },
+      "bottleneck": "ST03",
+      "bottleneck_ct": 217.0,
+      "balance_pct": 43.2,
+      "finished": 1,
+      "wip": 3,
+      "elapsed_min": 6.2,
+      "throughput_per_hr": 9.6,
+      "last_finish": "2026-11-03T07:30:15.209000+00:00"
+     }
+    ],
+    "best": {
+     "group_id": "G03",
+     "batch": "TEST2",
+     "throughput_per_hr": 55.0
+    }
+   },
+   "created_at": "2026-11-19T02:04:50.230750+00:00"
+  },
+  {
+   "id": 3,
+   "tick": 3,
+   "message": "[10:04:50] Python 第 3 次執行：讀到 173 筆事件、6 組；產出率最高為 G03（TEST2）每小時 45.1 件，其瓶頸站 ST02（平均 99.2 秒）",
+   "data": {
+    "events": 173,
+    "groups": 6,
+    "stations": [
+     "ST01",
+     "ST02",
+     "ST03",
+     "ST04",
+     "ST05",
+     "ST06",
+     "ST07",
+     "ST08",
+     "ST09"
+    ],
+    "lines": [
+     {
+      "group_id": "G01",
+      "batch": "TEST2",
+      "events": 17,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07"
+      ],
+      "avg_ct": {
+       "ST02": 38.8,
+       "ST03": 87.0,
+       "ST04": 62.9,
+       "ST01": 63.5,
+       "ST05": 37.8,
+       "ST06": 32.2,
+       "ST07": 44.4
+      },
+      "count_by_station": {
+       "ST02": 4,
+       "ST03": 2,
+       "ST04": 3,
+       "ST01": 3,
+       "ST05": 2,
+       "ST06": 2,
+       "ST07": 1
+      },
+      "bottleneck": "ST03",
+      "bottleneck_ct": 87.0,
+      "balance_pct": 60.2,
+      "finished": 1,
+      "wip": 2,
+      "elapsed_min": 4.1,
+      "throughput_per_hr": 14.6,
+      "last_finish": "2026-11-03T07:28:08.399000+00:00"
+     },
+     {
+      "group_id": "G02",
+      "batch": "TEST1",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST04": 35.7,
+       "ST02": 50.6,
+       "ST03": 65.5,
+       "ST01": 64.0,
+       "ST06": 46.2,
+       "ST05": 46.1,
+       "ST07": 70.0,
+       "ST08": 81.2,
+       "ST09": 30.3
+      },
+      "count_by_station": {
+       "ST04": 4,
+       "ST02": 4,
+       "ST03": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 4,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 4
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 81.2,
+      "balance_pct": 67.0,
+      "finished": 4,
+      "wip": 0,
+      "elapsed_min": 11.9,
+      "throughput_per_hr": 20.1,
+      "last_finish": "2026-11-02T07:57:39.555000+00:00"
+     },
+     {
+      "group_id": "G02",
+      "batch": "TEST2",
+      "events": 21,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07"
+      ],
+      "avg_ct": {
+       "ST01": 51.7,
+       "ST02": 45.5,
+       "ST04": 50.7,
+       "ST03": 47.3,
+       "ST06": 66.7,
+       "ST05": 49.2,
+       "ST07": 35.6
+      },
+      "count_by_station": {
+       "ST01": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST03": 4,
+       "ST06": 2,
+       "ST05": 2,
+       "ST07": 1
+      },
+      "bottleneck": "ST06",
+      "bottleneck_ct": 66.7,
+      "balance_pct": 74.3,
+      "finished": 1,
+      "wip": 3,
+      "elapsed_min": 4.3,
+      "throughput_per_hr": 14.0,
+      "last_finish": "2026-11-03T07:28:18.016000+00:00"
+     },
+     {
+      "group_id": "G03",
+      "batch": "TEST2",
+      "events": 16,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06"
+      ],
+      "avg_ct": {
+       "ST03": 62.1,
+       "ST01": 71.4,
+       "ST02": 99.2,
+       "ST04": 70.6,
+       "ST06": 49.7,
+       "ST05": 29.4
+      },
+      "count_by_station": {
+       "ST03": 3,
+       "ST01": 3,
+       "ST02": 2,
+       "ST04": 3,
+       "ST06": 3,
+       "ST05": 2
+      },
+      "bottleneck": "ST02",
+      "bottleneck_ct": 99.2,
+      "balance_pct": 64.2,
+      "finished": 3,
+      "wip": 0,
+      "elapsed_min": 4.0,
+      "throughput_per_hr": 45.1,
+      "last_finish": "2026-11-03T07:28:00.385000+00:00"
+     },
+     {
+      "group_id": "G05",
+      "batch": "TEST1",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST03": 38.4,
+       "ST02": 57.5,
+       "ST04": 71.5,
+       "ST01": 84.7,
+       "ST06": 40.5,
+       "ST05": 98.4,
+       "ST07": 146.0,
+       "ST08": 39.8,
+       "ST09": 11.7
+      },
+      "count_by_station": {
+       "ST03": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 5,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 3
+      },
+      "bottleneck": "ST07",
+      "bottleneck_ct": 146.0,
+      "balance_pct": 44.8,
+      "finished": 3,
+      "wip": 1,
+      "elapsed_min": 19.3,
+      "throughput_per_hr": 9.3,
+      "last_finish": "2026-11-02T08:05:02.085000+00:00"
+     },
+     {
+      "group_id": "G05",
+      "batch": "TEST2",
+      "events": 17,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07"
+      ],
+      "avg_ct": {
+       "ST04": 48.9,
+       "ST03": 70.0,
+       "ST02": 67.2,
+       "ST06": 10.2,
+       "ST01": 61.7,
+       "ST05": 34.1,
+       "ST07": 21.9
+      },
+      "count_by_station": {
+       "ST04": 4,
+       "ST03": 2,
+       "ST02": 3,
+       "ST06": 2,
+       "ST01": 3,
+       "ST05": 2,
+       "ST07": 1
+      },
+      "bottleneck": "ST03",
+      "bottleneck_ct": 70.0,
+      "balance_pct": 64.1,
+      "finished": 1,
+      "wip": 2,
+      "elapsed_min": 4.4,
+      "throughput_per_hr": 13.7,
+      "last_finish": "2026-11-03T07:28:22.853000+00:00"
+     },
+     {
+      "group_id": "G06",
+      "batch": "TEST2",
+      "events": 20,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST08"
+      ],
+      "avg_ct": {
+       "ST03": 13.5,
+       "ST02": 42.2,
+       "ST01": 52.1,
+       "ST04": 66.2,
+       "ST08": 82.9,
+       "ST06": 22.3,
+       "ST05": 82.8
+      },
+      "count_by_station": {
+       "ST03": 4,
+       "ST02": 4,
+       "ST01": 4,
+       "ST04": 3,
+       "ST08": 1,
+       "ST06": 3,
+       "ST05": 1
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 82.9,
+      "balance_pct": 62.4,
+      "finished": 1,
+      "wip": 3,
+      "elapsed_min": 4.4,
+      "throughput_per_hr": 13.8,
+      "last_finish": "2026-11-03T07:28:21.257000+00:00"
+     },
+     {
+      "group_id": "G07",
+      "batch": "TEST2",
+      "events": 10,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06"
+      ],
+      "avg_ct": {
+       "ST02": 104.1,
+       "ST01": 58.9,
+       "ST04": 158.5,
+       "ST05": 56.2,
+       "ST06": 20.1,
+       "ST03": 217.0
+      },
+      "count_by_station": {
+       "ST02": 2,
+       "ST01": 4,
+       "ST04": 1,
+       "ST05": 1,
+       "ST06": 1,
+       "ST03": 1
+      },
+      "bottleneck": "ST03",
+      "bottleneck_ct": 217.0,
+      "balance_pct": 47.2,
+      "finished": 1,
+      "wip": 3,
+      "elapsed_min": 4.3,
+      "throughput_per_hr": 13.9,
+      "last_finish": "2026-11-03T07:28:21.285000+00:00"
+     }
+    ],
+    "best": {
+     "group_id": "G03",
+     "batch": "TEST2",
+     "throughput_per_hr": 45.1
+    }
+   },
+   "created_at": "2026-11-19T02:04:50.230750+00:00"
+  },
+  {
+   "id": 2,
+   "tick": 2,
+   "message": "[10:04:50] Python 第 2 次執行：讀到 115 筆事件、6 組；產出率最高為 G07（TEST2）每小時 30.3 件，其瓶頸站 ST01（平均 118.6 秒）",
+   "data": {
+    "events": 115,
+    "groups": 6,
+    "stations": [
+     "ST01",
+     "ST02",
+     "ST03",
+     "ST04",
+     "ST05",
+     "ST06",
+     "ST07",
+     "ST08",
+     "ST09"
+    ],
+    "lines": [
+     {
+      "group_id": "G01",
+      "batch": "TEST2",
+      "events": 9,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06"
+      ],
+      "avg_ct": {
+       "ST02": 38.3,
+       "ST03": 70.7,
+       "ST04": 63.1,
+       "ST01": 64.1,
+       "ST05": 34.8,
+       "ST06": 46.0
+      },
+      "count_by_station": {
+       "ST02": 3,
+       "ST03": 1,
+       "ST04": 2,
+       "ST01": 1,
+       "ST05": 1,
+       "ST06": 1
+      },
+      "bottleneck": "ST03",
+      "bottleneck_ct": 70.7,
+      "balance_pct": 74.7,
+      "finished": 1,
+      "wip": 0,
+      "elapsed_min": 2.3,
+      "throughput_per_hr": 25.6,
+      "last_finish": "2026-11-03T07:26:22.838000+00:00"
+     },
+     {
+      "group_id": "G02",
+      "batch": "TEST1",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST04": 35.7,
+       "ST02": 50.6,
+       "ST03": 65.5,
+       "ST01": 64.0,
+       "ST06": 46.2,
+       "ST05": 46.1,
+       "ST07": 70.0,
+       "ST08": 81.2,
+       "ST09": 30.3
+      },
+      "count_by_station": {
+       "ST04": 4,
+       "ST02": 4,
+       "ST03": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 4,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 4
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 81.2,
+      "balance_pct": 67.0,
+      "finished": 4,
+      "wip": 0,
+      "elapsed_min": 11.9,
+      "throughput_per_hr": 20.1,
+      "last_finish": "2026-11-02T07:57:39.555000+00:00"
+     },
+     {
+      "group_id": "G02",
+      "batch": "TEST2",
+      "events": 8,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST06"
+      ],
+      "avg_ct": {
+       "ST01": 51.6,
+       "ST02": 45.4,
+       "ST04": 54.5,
+       "ST03": 55.2,
+       "ST06": 52.3
+      },
+      "count_by_station": {
+       "ST01": 2,
+       "ST02": 2,
+       "ST04": 2,
+       "ST03": 1,
+       "ST06": 1
+      },
+      "bottleneck": "ST03",
+      "bottleneck_ct": 55.2,
+      "balance_pct": 93.8,
+      "finished": 1,
+      "wip": 1,
+      "elapsed_min": 2.2,
+      "throughput_per_hr": 27.9,
+      "last_finish": "2026-11-03T07:26:10.456000+00:00"
+     },
+     {
+      "group_id": "G03",
+      "batch": "TEST2",
+      "events": 8,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06"
+      ],
+      "avg_ct": {
+       "ST03": 67.2,
+       "ST01": 65.5,
+       "ST02": 79.4,
+       "ST04": 95.6,
+       "ST06": 3.2,
+       "ST05": 36.5
+      },
+      "count_by_station": {
+       "ST03": 2,
+       "ST01": 2,
+       "ST02": 1,
+       "ST04": 1,
+       "ST06": 1,
+       "ST05": 1
+      },
+      "bottleneck": "ST04",
+      "bottleneck_ct": 95.6,
+      "balance_pct": 60.6,
+      "finished": 1,
+      "wip": 1,
+      "elapsed_min": 2.4,
+      "throughput_per_hr": 25.3,
+      "last_finish": "2026-11-03T07:26:23.128000+00:00"
+     },
+     {
+      "group_id": "G05",
+      "batch": "TEST1",
+      "events": 36,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST03": 38.4,
+       "ST02": 57.5,
+       "ST04": 71.5,
+       "ST01": 84.7,
+       "ST06": 40.5,
+       "ST05": 98.4,
+       "ST07": 146.0,
+       "ST08": 39.8,
+       "ST09": 11.7
+      },
+      "count_by_station": {
+       "ST03": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 5,
+       "ST07": 4,
+       "ST08": 4,
+       "ST09": 3
+      },
+      "bottleneck": "ST07",
+      "bottleneck_ct": 146.0,
+      "balance_pct": 44.8,
+      "finished": 3,
+      "wip": 1,
+      "elapsed_min": 19.3,
+      "throughput_per_hr": 9.3,
+      "last_finish": "2026-11-02T08:05:02.085000+00:00"
+     },
+     {
+      "group_id": "G05",
+      "batch": "TEST2",
+      "events": 7,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06"
+      ],
+      "avg_ct": {
+       "ST04": 49.6,
+       "ST03": 82.7,
+       "ST02": 88.7,
+       "ST06": 10.2,
+       "ST01": 94.3,
+       "ST05": 43.2
+      },
+      "count_by_station": {
+       "ST04": 2,
+       "ST03": 1,
+       "ST02": 1,
+       "ST06": 1,
+       "ST01": 1,
+       "ST05": 1
+      },
+      "bottleneck": "ST01",
+      "bottleneck_ct": 94.3,
+      "balance_pct": 65.2,
+      "finished": 1,
+      "wip": 0,
+      "elapsed_min": 2.4,
+      "throughput_per_hr": 24.9,
+      "last_finish": "2026-11-03T07:26:25.104000+00:00"
+     },
+     {
+      "group_id": "G06",
+      "batch": "TEST2",
+      "events": 9,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST06",
+       "ST08"
+      ],
+      "avg_ct": {
+       "ST03": 3.6,
+       "ST02": 43.2,
+       "ST01": 51.0,
+       "ST04": 58.3,
+       "ST08": 82.9,
+       "ST06": 21.2
+      },
+      "count_by_station": {
+       "ST03": 2,
+       "ST02": 2,
+       "ST01": 2,
+       "ST04": 1,
+       "ST08": 1,
+       "ST06": 1
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 82.9,
+      "balance_pct": 52.3,
+      "finished": 1,
+      "wip": 1,
+      "elapsed_min": 2.1,
+      "throughput_per_hr": 29.2,
+      "last_finish": "2026-11-03T07:26:03.226000+00:00"
+     },
+     {
+      "group_id": "G07",
+      "batch": "TEST2",
+      "events": 2,
+      "stations": [
+       "ST01",
+       "ST02"
+      ],
+      "avg_ct": {
+       "ST02": 112.7,
+       "ST01": 118.6
+      },
+      "count_by_station": {
+       "ST02": 1,
+       "ST01": 1
+      },
+      "bottleneck": "ST01",
+      "bottleneck_ct": 118.6,
+      "balance_pct": 97.5,
+      "finished": 1,
+      "wip": 0,
+      "elapsed_min": 2.0,
+      "throughput_per_hr": 30.3,
+      "last_finish": "2026-11-03T07:26:02.671000+00:00"
+     }
+    ],
+    "best": {
+     "group_id": "G07",
+     "batch": "TEST2",
+     "throughput_per_hr": 30.3
+    }
+   },
+   "created_at": "2026-11-19T02:04:50.230750+00:00"
+  },
+  {
+   "id": 1,
+   "tick": 1,
+   "message": "[10:04:50] Python 第 1 次執行：讀到 58 筆事件、2 組；產出率最高為 G05（TEST1）每小時 6.2 件，其瓶頸站 ST07（平均 105.1 秒）",
+   "data": {
+    "events": 58,
+    "groups": 2,
+    "stations": [
+     "ST01",
+     "ST02",
+     "ST03",
+     "ST04",
+     "ST05",
+     "ST06",
+     "ST07",
+     "ST08",
+     "ST09"
+    ],
+    "lines": [
+     {
+      "group_id": "G02",
+      "batch": "TEST1",
+      "events": 32,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07",
+       "ST08",
+       "ST09"
+      ],
+      "avg_ct": {
+       "ST04": 35.7,
+       "ST02": 50.6,
+       "ST03": 65.5,
+       "ST01": 64.0,
+       "ST06": 46.2,
+       "ST05": 46.1,
+       "ST07": 70.0,
+       "ST08": 90.1,
+       "ST09": 44.4
+      },
+      "count_by_station": {
+       "ST04": 4,
+       "ST02": 4,
+       "ST03": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 4,
+       "ST07": 4,
+       "ST08": 3,
+       "ST09": 1
+      },
+      "bottleneck": "ST08",
+      "bottleneck_ct": 90.1,
+      "balance_pct": 63.2,
+      "finished": 1,
+      "wip": 3,
+      "elapsed_min": 9.8,
+      "throughput_per_hr": 6.1,
+      "last_finish": "2026-11-02T07:55:31.739000+00:00"
+     },
+     {
+      "group_id": "G05",
+      "batch": "TEST1",
+      "events": 26,
+      "stations": [
+       "ST01",
+       "ST02",
+       "ST03",
+       "ST04",
+       "ST05",
+       "ST06",
+       "ST07"
+      ],
+      "avg_ct": {
+       "ST03": 38.4,
+       "ST02": 57.5,
+       "ST04": 71.5,
+       "ST01": 84.7,
+       "ST06": 40.5,
+       "ST05": 98.4,
+       "ST07": 105.1
+      },
+      "count_by_station": {
+       "ST03": 4,
+       "ST02": 4,
+       "ST04": 4,
+       "ST01": 4,
+       "ST06": 4,
+       "ST05": 5,
+       "ST07": 1
+      },
+      "bottleneck": "ST07",
+      "bottleneck_ct": 105.1,
+      "balance_pct": 67.4,
+      "finished": 1,
+      "wip": 3,
+      "elapsed_min": 9.7,
+      "throughput_per_hr": 6.2,
+      "last_finish": "2026-11-02T07:55:24.268000+00:00"
+     }
+    ],
+    "best": {
+     "group_id": "G05",
+     "batch": "TEST1",
+     "throughput_per_hr": 6.2
+    }
+   },
+   "created_at": "2026-11-19T02:04:50.230750+00:00"
+  },
+  {
+   "id": 0,
+   "tick": 0,
+   "message": "Hello from Python 3.13.18！這段文字是本機的 Python 印出來的",
+   "data": null,
+   "created_at": "2026-11-19T02:04:50.230750+00:00"
+  }
+ ],
+ "generated_at": "2026-11-19T02:04:50.230750+00:00",
+ "python": "3.13.18"
+}

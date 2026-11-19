@@ -1,0 +1,29 @@
+# 每次 push 到 main：GitHub 執行 Python（讀 Excel → 分析）→ 把結果和網頁一起發佈到 GitHub Pages
+name: Run Python and deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # 也可以在 Actions 頁面手動按 Run workflow
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: { group: pages, cancel-in-progress: true }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.deploy.outputs.page_url }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install packages
+        run: pip install openpyxl
+      - name: Run Python (目標一、二)
+        working-directory: backend
+        run: python build_static.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: frontend }
+      - id: deploy
+        uses: actions/deploy-pages@v4
