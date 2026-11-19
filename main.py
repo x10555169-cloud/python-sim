@@ -103,7 +103,7 @@ def _running() -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 服務重啟恢復：資料庫狀態是 running 就接著跑
+    # 服務重啟恢復：資料庫狀態是 running 就接著跑（暫停中的維持暫停）
     try:
         st = await store.get_status()
         if st.get("running"):
@@ -137,8 +137,17 @@ async def health():
 @app.get("/status")
 async def status():
     st = await store.get_status()
-    return {**st, "running": _running(), "store": store.mode, "interval": INTERVAL,
+    return {**st, "running": _running(), "paused": bool(st.get("paused")) and not _running(), "store": store.mode, "interval": INTERVAL,
             "event_table": EVENT_TABLE, "replay": REPLAY}
+
+
+async def _cancel_task() -> bool:
+    """停掉計算迴圈並等它真的結束；回傳原本是否在跑。"""
+    if not _running():
+        return False
+    _task.cancel()
+    await asyncio.gather(_task, return_exceptions=True)
+    return True
 
 
 @app.post("/start")
@@ -147,26 +156,63 @@ async def start(x_admin_token: str | None = Header(default=None)):
     async with _lock:
         if _running():
             return {"ok": True, "already_running": True}
+        st = await store.get_status()
+        if st.get("paused"):
+            raise HTTPException(status_code=409, detail="模擬目前暫停中，請按「繼續模擬」，或先按「停止模擬」再重新開始")
         run_id = datetime.now(timezone.utc).strftime("%m%d-%H%M%S")
         if REPLAY and (isinstance(store, MemoryStore) or EVENT_TABLE != "event"):
             await store.clear_events(EVENT_TABLE)  # 重播從頭開始（絕不清老師的正式 event 表）
-        await store.save_status(running=True, run_id=run_id, tick=0, replay_pos=0,
-                                started_at=now_iso(), message="模擬啟動中…")
+        await store.save_status(running=True, paused=False, paused_at=None, run_id=run_id, tick=0,
+                                replay_pos=0, started_at=now_iso(), message="模擬啟動中…")
         await store.add_result({"run_id": run_id, "tick": 0, "message": "Hello from Python！模擬已啟動"})
         _start_task(run_id)
         return {"ok": True, "run_id": run_id}
+
+
+@app.post("/pause")
+async def pause(x_admin_token: str | None = Header(default=None)):
+    """暫停：停止計算，但保留執行次數、重播進度與 run_id。"""
+    check_token(x_admin_token)
+    async with _lock:
+        if not await _cancel_task():
+            raise HTTPException(status_code=409, detail="目前沒有正在執行的模擬")
+        st = await store.get_status()
+        msg = f"模擬已暫停（第 {st.get('tick')} 次執行後）"
+        await store.save_status(running=False, paused=True, paused_at=now_iso(), message=msg)
+        await store.add_result({"run_id": st.get("run_id"), "tick": st.get("tick"), "message": msg})
+        return {"ok": True, "tick": st.get("tick")}
+
+
+@app.post("/resume")
+async def resume(x_admin_token: str | None = Header(default=None)):
+    """繼續：從暫停的地方接著跑；暫停的時間不算進 MAX_RUN_MINUTES。"""
+    check_token(x_admin_token)
+    async with _lock:
+        if _running():
+            return {"ok": True, "already_running": True}
+        st = await store.get_status()
+        if not st.get("paused"):
+            raise HTTPException(status_code=409, detail="目前沒有暫停中的模擬（Render 休眠重啟後進度會清空，請重新開始）")
+        now = datetime.now(timezone.utc)
+        started = datetime.fromisoformat(str(st.get("started_at") or now_iso()).replace("Z", "+00:00"))
+        paused_at = datetime.fromisoformat(str(st.get("paused_at") or now_iso()).replace("Z", "+00:00"))
+        started += now - paused_at
+        msg = f"模擬繼續（從第 {st.get('tick')} 次之後接著跑）"
+        await store.save_status(running=True, paused=False, paused_at=None,
+                                started_at=started.isoformat(), message=msg)
+        await store.add_result({"run_id": st.get("run_id"), "tick": st.get("tick"), "message": msg})
+        _start_task(st.get("run_id") or "resumed")
+        return {"ok": True, "tick": st.get("tick")}
 
 
 @app.post("/stop")
 async def stop(x_admin_token: str | None = Header(default=None)):
     check_token(x_admin_token)
     async with _lock:
-        was = _running()
+        st = await store.get_status()
+        was = await _cancel_task() or bool(st.get("paused"))
+        await store.save_status(running=False, paused=False, paused_at=None, message="模擬已停止")
         if was:
-            _task.cancel()
-        await store.save_status(running=False, message="模擬已停止")
-        if was:
-            st = await store.get_status()
             await store.add_result({"run_id": st.get("run_id"), "tick": st.get("tick"), "message": "模擬已停止"})
         return {"ok": True, "was_running": was}
 

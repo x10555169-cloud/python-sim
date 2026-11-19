@@ -11,7 +11,7 @@
   try { $("token").value = localStorage.getItem(tokenKey) || ""; } catch {}
   $("stSource").textContent = SOURCE_LABEL[MODE] || MODE;
   if (MODE === "static") {
-    ["btnStart", "btnStop", "token"].forEach((id) => ($(id).hidden = true));
+    ["btnStart", "btnPause", "btnResume", "btnStop", "token"].forEach((id) => ($(id).hidden = true));
     $("apiMsg").textContent = "靜態模式：每次 push 到 GitHub，Actions 會重新執行 Python 並更新這頁。";
   }
 
@@ -80,11 +80,15 @@
   }
 
   function renderStatus(st) {
-    $("stRunning").textContent = MODE === "static" ? "已完成" : st.running ? "執行中" : "已停止";
+    const state = MODE === "static" ? "done" : st.running ? "running" : st.paused ? "paused" : "stopped";
+    $("stRunning").textContent = { done: "已完成", running: "執行中", paused: "已暫停", stopped: "已停止" }[state];
     $("stTick").textContent = st.tick ?? "—";
     $("stRun").textContent = st.run_id || "—";
-    $("btnStart").disabled = !!st.running;
-    $("btnStop").disabled = !st.running;
+    // 依狀態決定哪些按鈕能按：停止中 → 只能開始；執行中 → 暫停、停止；暫停中 → 繼續、停止
+    $("btnStart").disabled = state !== "stopped";
+    $("btnPause").disabled = state !== "running";
+    $("btnResume").disabled = state !== "paused";
+    $("btnStop").disabled = !(state === "running" || state === "paused");
   }
 
   async function refresh() {
@@ -104,18 +108,24 @@
   async function control(action) {
     const token = $("token").value.trim();
     try { localStorage.setItem(tokenKey, token); } catch {}
-    $("apiMsg").textContent = action === "start" ? "啟動中…（Render 免費方案休眠時，第一次可能要等 30–60 秒）" : "停止中…";
+    const doing = { start: "啟動中…（Render 免費方案休眠時，第一次可能要等 30–60 秒）", pause: "暫停中…", resume: "繼續中…", stop: "停止中…" };
+    $("apiMsg").textContent = doing[action];
     try {
       const res = await apiCall(`/${action}`, { method: "POST", headers: token ? { "X-Admin-Token": token } : {} });
-      $("apiMsg").textContent = action === "start"
-        ? (res.already_running ? "模擬已經在執行中" : `已啟動，Run ID：${res.run_id}`)
-        : "已停止";
+      $("apiMsg").textContent = res.already_running ? "模擬已經在執行中" : {
+        start: `已啟動，Run ID：${res.run_id}`,
+        pause: `已暫停（第 ${res.tick} 次執行後），按「繼續模擬」會從這裡接著跑`,
+        resume: `已繼續，從第 ${res.tick} 次之後接著跑`,
+        stop: "已停止",
+      }[action];
       refresh();
     } catch (e) {
       $("apiMsg").textContent = `失敗：${e.message}`;
     }
   }
   $("btnStart").onclick = () => control("start");
+  $("btnPause").onclick = () => control("pause");
+  $("btnResume").onclick = () => control("resume");
   $("btnStop").onclick = () => control("stop");
 
   refresh();

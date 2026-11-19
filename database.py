@@ -58,7 +58,7 @@ class SupabaseStore:
 
     async def get_status(self) -> dict:
         rows = await self._get("sim_status", {"select": "*", "id": "eq.1"})
-        return rows[0] if rows else {"id": 1, "running": False, "tick": 0, "replay_pos": 0}
+        return rows[0] if rows else {"id": 1, "running": False, "paused": False, "tick": 0, "replay_pos": 0}
 
     async def save_status(self, **fields: Any) -> None:
         fields = {"id": 1, **fields, "updated_at": now_iso()}
@@ -76,7 +76,7 @@ class MemoryStore:
     def __init__(self):
         self.events: dict[str, list[dict]] = {}
         self.results: list[dict] = []
-        self.status: dict = {"id": 1, "running": False, "tick": 0, "replay_pos": 0}
+        self.status: dict = {"id": 1, "running": False, "paused": False, "tick": 0, "replay_pos": 0}
 
     async def fetch_events(self, table: str, limit: int = 10000) -> list[dict]:
         return sorted(self.events.get(table, []), key=lambda e: str(e["finish_time"]))[:limit]
