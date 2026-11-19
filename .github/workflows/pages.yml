@@ -15,6 +15,15 @@ jobs:
     environment: { name: github-pages, url: "${{ steps.deploy.outputs.page_url }}" }
     steps:
       - uses: actions/checkout@v4
+      - name: Arrange folders (若檔案被上傳在最外層，自動放回 backend/ 與 frontend/)
+        run: |
+          if [ ! -d backend ]; then
+            mkdir -p backend/data frontend/data
+            cp *.py requirements.txt backend/
+            cp *.xlsx backend/data/ie_chair_data.xlsx
+            cp index.html style.css app.js config.js frontend/
+          fi
+          ls -R backend frontend
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Install packages
