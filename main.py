@@ -31,9 +31,9 @@ MAX_RUN_MINUTES = float(os.getenv("MAX_RUN_MINUTES", "90"))       # 課堂結束
 EVENT_TABLE = os.getenv("EVENT_TABLE", "event" if store.mode == "supabase" else "event_replay")
 # REPLAY=true：每一輪把 Excel 的下一批事件寫進 EVENT_TABLE，模擬「現場正在生產」
 REPLAY = os.getenv("REPLAY", "false" if store.mode == "supabase" else "true").lower() == "true"
-REPLAY_BATCH = int(os.getenv("REPLAY_BATCH", "15"))
-# true：event 表沒有變化時不寫結果（避免灌爆結果表）
-ONLY_ON_NEW_DATA = os.getenv("ONLY_ON_NEW_DATA", "true").lower() == "true"
+REPLAY_BATCH = int(os.getenv("REPLAY_BATCH", "5"))
+# true：event 表沒有變化時不寫結果（避免灌爆結果表）；記憶體模式預設每 5 秒都寫一筆
+ONLY_ON_NEW_DATA = os.getenv("ONLY_ON_NEW_DATA", "true" if store.mode == "supabase" else "false").lower() == "true"
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
 

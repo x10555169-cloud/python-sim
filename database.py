@@ -92,6 +92,7 @@ class MemoryStore:
     async def add_result(self, row: dict) -> dict:
         row = {"id": len(self.results) + 1, "created_at": now_iso(), **row}
         self.results.append(row)
+        del self.results[:-500]  # 記憶體模式只保留最近 500 筆
         return row
 
     async def latest_results(self, limit: int = 20) -> list[dict]:
