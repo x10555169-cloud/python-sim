@@ -84,6 +84,9 @@
     $("stRunning").textContent = { done: "已完成", running: "執行中", paused: "已暫停", stopped: "已停止" }[state];
     $("stTick").textContent = st.tick ?? "—";
     $("stRun").textContent = st.run_id || "—";
+    if (MODE !== "static") {
+      $("genAt").textContent = st.last_check_at ? `最後檢查 ${fmtTime(st.last_check_at)}　${st.last_check || ""}` : "";
+    }
     // 依狀態決定哪些按鈕能按：停止中 → 只能開始；執行中 → 暫停、停止；暫停中 → 繼續、停止
     $("btnStart").disabled = state !== "stopped";
     $("btnPause").disabled = state !== "running";

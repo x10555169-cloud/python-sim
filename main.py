@@ -28,12 +28,13 @@ store = make_store()
 
 INTERVAL = float(os.getenv("SIM_INTERVAL_SECONDS", "5"))
 MAX_RUN_MINUTES = float(os.getenv("MAX_RUN_MINUTES", "90"))       # 課堂結束自動停止
-EVENT_TABLE = os.getenv("EVENT_TABLE", "event" if store.mode == "supabase" else "event_replay")
+LIVE = store.mode in ("supabase", "supabase-read")  # 讀真正的 Supabase event 表
+EVENT_TABLE = os.getenv("EVENT_TABLE", "event" if LIVE else "event_replay")
 # REPLAY=true：每一輪把 Excel 的下一批事件寫進 EVENT_TABLE，模擬「現場正在生產」
-REPLAY = os.getenv("REPLAY", "false" if store.mode == "supabase" else "true").lower() == "true"
+REPLAY = os.getenv("REPLAY", "false" if LIVE else "true").lower() == "true" and store.mode != "supabase-read"
 REPLAY_BATCH = int(os.getenv("REPLAY_BATCH", "5"))
 # true：event 表沒有變化時不寫結果（避免灌爆結果表）；記憶體模式預設每 5 秒都寫一筆
-ONLY_ON_NEW_DATA = os.getenv("ONLY_ON_NEW_DATA", "true" if store.mode == "supabase" else "false").lower() == "true"
+ONLY_ON_NEW_DATA = os.getenv("ONLY_ON_NEW_DATA", "true" if LIVE else "false").lower() == "true"
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
 
@@ -56,6 +57,7 @@ async def run_loop(run_id: str) -> None:
     pos = int(st.get("replay_pos") or 0)
     started_dt = datetime.fromisoformat(str(st.get("started_at") or now_iso()).replace("Z", "+00:00"))
     last_sig = None
+    checked = 0
     log.info("run %s: table=%s replay=%s tick=%s pos=%s", run_id, EVENT_TABLE, REPLAY, tick, pos)
 
     while True:
@@ -72,15 +74,22 @@ async def run_loop(run_id: str) -> None:
                 pos += len(batch)
 
             events = await store.fetch_events(EVENT_TABLE)
-            sig = (len(events), events[-1]["finish_time"] if events else None)
-            if sig != last_sig or not ONLY_ON_NEW_DATA:
+            sig = (len(events), max((str(e.get("finish_time")) for e in events), default=None))
+            checked += 1
+            if sig == last_sig and ONLY_ON_NEW_DATA:
+                # 沒有新資料：不重算、不寫結果，只更新「最後檢查」
+                await store.save_status(running=True, last_check_at=now_iso(),
+                                        last_check=f"第 {checked} 次檢查：{len(events)} 筆，沒有新資料")
+            else:
                 last_sig = sig
                 tick += 1
                 message, data = compute(tick, events)
                 if REPLAY:
                     message += f"（重播進度 {pos}/{len(excel_events())}）"
                 await store.add_result({"run_id": run_id, "tick": tick, "message": message, "data": data})
-                await store.save_status(running=True, run_id=run_id, tick=tick, replay_pos=pos, message=message)
+                await store.save_status(running=True, run_id=run_id, tick=tick, replay_pos=pos, message=message,
+                                        last_check_at=now_iso(),
+                                        last_check=f"第 {checked} 次檢查：{len(events)} 筆，有新資料 → 已重新計算")
         except asyncio.CancelledError:
             raise
         except Exception as e:  # 網路錯誤等不要讓整個迴圈掛掉

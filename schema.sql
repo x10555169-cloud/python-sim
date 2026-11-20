@@ -45,6 +45,8 @@ create table if not exists public.sim_status (
 );
 alter table public.sim_status add column if not exists paused    boolean not null default false;
 alter table public.sim_status add column if not exists paused_at timestamptz;
+alter table public.sim_status add column if not exists last_check_at timestamptz;
+alter table public.sim_status add column if not exists last_check text;
 insert into public.sim_status (id) values (1) on conflict (id) do nothing;
 
 -- ---------------------------------------------------------

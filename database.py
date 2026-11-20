@@ -33,8 +33,16 @@ class SupabaseStore:
         r.raise_for_status()
         return r.json()
 
-    async def fetch_events(self, table: str, limit: int = 10000) -> list[dict]:
-        return await self._get(table, {"select": EVENT_COLUMNS, "order": "finish_time.asc", "limit": limit})
+    async def fetch_events(self, table: str, limit: int = 20000) -> list[dict]:
+        # Supabase 一次最多回 1000 筆，分頁抓完
+        rows: list[dict] = []
+        while len(rows) < limit:
+            page = await self._get(table, {"select": EVENT_COLUMNS, "order": "finish_time.asc.nullslast,id.asc",
+                                           "limit": 1000, "offset": len(rows)})
+            rows += page
+            if len(page) < 1000:
+                break
+        return rows
 
     async def add_events(self, table: str, rows: list[dict]) -> None:
         if not rows:
@@ -66,6 +74,28 @@ class SupabaseStore:
             "/sim_status", json=fields, headers={"Prefer": "resolution=merge-duplicates,return=minimal"}
         )
         r.raise_for_status()
+
+
+class ReadOnlyEventsStore:
+    """只有 publishable key 時：event 從 Supabase 讀（唯讀），結果與狀態存在記憶體。"""
+
+    mode = "supabase-read"
+
+    def __init__(self, url: str, publishable_key: str):
+        self.remote = SupabaseStore(url, publishable_key)
+        self.local = MemoryStore()
+
+    async def fetch_events(self, table: str, limit: int = 20000) -> list[dict]:
+        return await self.remote.fetch_events(table, limit)
+
+    async def add_events(self, table: str, rows: list[dict]) -> None:
+        raise RuntimeError("唯讀模式不能寫入 event")
+
+    async def clear_events(self, table: str) -> None:
+        raise RuntimeError("唯讀模式不能清除 event")
+
+    def __getattr__(self, name):  # 結果、狀態用記憶體
+        return getattr(self.local, name)
 
 
 class MemoryStore:
@@ -106,8 +136,16 @@ class MemoryStore:
 
 
 def make_store():
+    """
+    SUPABASE_URL + SUPABASE_SECRET_KEY      → 完整模式：讀 event、結果寫回 Supabase（需先執行 schema.sql）
+    SUPABASE_URL + SUPABASE_PUBLISHABLE_KEY → 唯讀模式：讀 event，結果存在 Render 記憶體
+    都沒有                                   → 記憶體模式：用 Excel 重播
+    """
     url = os.getenv("SUPABASE_URL", "").strip()
-    key = os.getenv("SUPABASE_SECRET_KEY", "").strip()
-    if url and key:
-        return SupabaseStore(url, key)
+    secret = os.getenv("SUPABASE_SECRET_KEY", "").strip()
+    publishable = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
+    if url and secret:
+        return SupabaseStore(url, secret)
+    if url and publishable:
+        return ReadOnlyEventsStore(url, publishable)
     return MemoryStore()

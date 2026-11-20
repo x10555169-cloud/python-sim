@@ -29,8 +29,8 @@ def batch_of(product_id: str) -> str:
     return p.split("-")[0] if "-" in p else "FORMAL"
 
 
-def analyze_line(rows: list[dict]) -> dict:
-    """單一組別、單一批次的生產線指標。"""
+def analyze_line(rows: list[dict], final_station: str) -> dict:
+    """單一組別、單一批次的生產線指標。final_station = 整條線的最後一站（例如 ST09）。"""
     by_station: dict[str, list[float]] = defaultdict(list)
     for r in rows:
         if r.get("duration_sec") is not None:
@@ -38,9 +38,10 @@ def analyze_line(rows: list[dict]) -> dict:
     stations = sorted(by_station)
     avg_ct = {s: round(statistics.fmean(v), 1) for s, v in by_station.items()}
 
-    first, last = stations[0], stations[-1]
+    first = stations[0]
     started = {r["product_id"] for r in rows if r["station_id"] == first}
-    finished = {r["product_id"] for r in rows if r["station_id"] == last}
+    # 只有做到「整條線最後一站」才算完成（避免只做了幾站的測試資料被當成產出）
+    finished = {r["product_id"] for r in rows if r["station_id"] == final_station}
 
     starts = [d for d in (_dt(r.get("start_time")) for r in rows) if d]
     ends = [d for d in (_dt(r.get("finish_time")) for r in rows) if d]
@@ -76,11 +77,12 @@ def compute(tick: int, events: list[dict]) -> tuple[str, dict]:
     for r in rows:
         grouped[(r["group_id"], batch_of(r["product_id"]))].append(r)
 
+    all_stations = sorted({r["station_id"] for r in rows})
+    final_station = all_stations[-1]
     lines = [
-        {"group_id": g, "batch": b, **analyze_line(rs)}
+        {"group_id": g, "batch": b, **analyze_line(rs, final_station)}
         for (g, b), rs in sorted(grouped.items())
     ]
-    all_stations = sorted({s for ln in lines for s in ln["stations"]})
     best = max(lines, key=lambda ln: (ln["throughput_per_hr"], ln["finished"]))
 
     data = {
