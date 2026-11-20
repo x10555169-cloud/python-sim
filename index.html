@@ -31,6 +31,12 @@
       <p class="hint" id="apiMsg"></p>
     </section>
 
+    <section class="card groupbar">
+      <label for="groupSel">選擇組別</label>
+      <select id="groupSel"></select>
+      <span class="hint" id="groupInfo"></span>
+    </section>
+
     <section class="card">
       <h2>Python 最新訊息</h2>
       <p id="latest" class="latest">等待 Python 送出資料…</p>
@@ -38,7 +44,7 @@
       <dl class="stats" id="latestStats"></dl>
     </section>
     <section class="card">
-      <h2>各組生產線分析 <span class="sub">（各站平均作業秒數，<mark>標色</mark> = 瓶頸站）</span></h2>
+      <h2><span id="linesTitle">各組生產線分析</span> <span class="sub">（各站平均作業秒數，<mark>標色</mark> = 瓶頸站）</span></h2>
       <div class="table-wrap"><table id="lines"></table></div>
     </section>
 

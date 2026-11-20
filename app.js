@@ -47,12 +47,43 @@
   const fmtTime = (iso) => iso ? new Date(iso).toLocaleString("zh-TW", { hour12: false, timeZone: "Asia/Taipei" }) : "";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   let lastTopId = null;
+  let lastRows = [];
+  let lastData = null;
 
-  function renderLines(d) {
-    const lines = d.lines || [];
-    const st = d.stations || [];
+  // ---------- 組別選擇（只影響自己的畫面；Python 仍然計算全部組別） ----------
+  const GROUP_COUNT = C.GROUP_COUNT || 25;
+  const groupKey = "sim-group";
+  const urlGroup = new URLSearchParams(location.search).get("group");
+  let selected = (urlGroup || (() => { try { return localStorage.getItem(groupKey); } catch { return null; } })() || "ALL").toUpperCase();
+  const baseGroups = Array.from({ length: GROUP_COUNT }, (_, i) => `G${String(i + 1).padStart(2, "0")}`);
+
+  function buildGroupOptions() {
+    const counts = {};
+    (lastData?.lines || []).forEach((l) => (counts[l.group_id] = (counts[l.group_id] || 0) + l.events));
+    const ids = [...new Set([...baseGroups, ...Object.keys(counts)])].sort();
+    if (selected !== "ALL" && !ids.includes(selected)) ids.push(selected);
+    const opts = [`<option value="ALL">全部組別</option>`].concat(ids.map((g) =>
+      `<option value="${esc(g)}">${esc(g)}${counts[g] ? `（${counts[g]} 筆）` : "（無資料）"}</option>`));
+    const html = opts.join("");
+    if ($("groupSel").dataset.html !== html) {
+      $("groupSel").innerHTML = html;
+      $("groupSel").dataset.html = html;
+    }
+    $("groupSel").value = selected;
+  }
+
+  $("groupSel").onchange = (ev) => {
+    selected = ev.target.value;
+    try { localStorage.setItem(groupKey, selected); } catch {}
+    const u = new URL(location.href);
+    if (selected === "ALL") u.searchParams.delete("group"); else u.searchParams.set("group", selected);
+    history.replaceState(null, "", u);
+    renderView();
+  };
+
+  function renderLines(lines, st) {
     const head = ["組別", "批次", "完成件數", "在製品", "瓶頸站", "平衡率", "產出/小時", "經過(分)", ...st];
-    const body = lines.map((l) => {
+    const body = lines.length ? lines.map((l) => {
       const cells = st.map((s) => {
         const v = l.avg_ct[s];
         return `<td class="${s === l.bottleneck ? "bn" : ""}">${v ?? "—"}</td>`;
@@ -60,22 +91,56 @@
       return `<tr><td>${esc(l.group_id)}</td><td>${esc(l.batch)}</td><td>${l.finished}</td><td>${l.wip}</td>`
         + `<td>${esc(l.bottleneck)}（${l.bottleneck_ct}s）</td><td>${l.balance_pct}%</td>`
         + `<td>${l.throughput_per_hr}</td><td>${l.elapsed_min}</td>${cells}</tr>`;
-    }).join("");
+    }).join("") : `<tr><td class="empty" colspan="${head.length}">${esc(selected)} 目前沒有資料</td></tr>`;
     $("lines").innerHTML = `<thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
+  }
+
+  const tilesHtml = (tiles) => tiles.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
+
+  function renderView() {
+    buildGroupOptions();
+    const top = lastRows[0];
+    const d = lastData;
+    if (!top) return;
+    const all = selected === "ALL";
+    $("linesTitle").textContent = all ? "各組生產線分析" : `${selected} 生產線分析`;
+
+    if (!d) { $("latest").textContent = top.message; return; }
+    const lines = all ? d.lines : d.lines.filter((l) => l.group_id === selected);
+
+    if (all) {
+      $("latest").textContent = top.message;
+      const avgBal = d.lines.length ? (d.lines.reduce((a, l) => a + l.balance_pct, 0) / d.lines.length).toFixed(1) : "—";
+      $("latestStats").innerHTML = tilesHtml([["事件筆數", d.events], ["組數", d.groups], ["工站數", d.stations.length],
+        ["產出率最高", `${d.best.group_id}（${d.best.throughput_per_hr}/hr）`], ["平均平衡率", `${avgBal}%`]]);
+      $("groupInfo").textContent = `共 ${d.groups} 組有資料`;
+    } else if (!lines.length) {
+      $("latest").textContent = `${selected} 目前沒有資料（Python 第 ${top.tick ?? "—"} 次執行時）`;
+      $("latestStats").innerHTML = "";
+      $("groupInfo").textContent = "這一組還沒有掃碼紀錄";
+    } else {
+      // 產出率排名：在所有「組別＋批次」裡排第幾
+      const ranked = [...d.lines].sort((a, b) => b.throughput_per_hr - a.throughput_per_hr);
+      const parts = lines.map((l) =>
+        `${l.batch} 完成 ${l.finished} 件、瓶頸 ${l.bottleneck}（${l.bottleneck_ct} 秒）、平衡率 ${l.balance_pct}%、每小時 ${l.throughput_per_hr} 件（排名 ${ranked.indexOf(l) + 1}/${ranked.length}）`);
+      const t = new Date(top.created_at || Date.now()).toLocaleTimeString("zh-TW", { hour12: false, timeZone: "Asia/Taipei" });
+      $("latest").textContent = `[${t}] ${selected}：${parts.join("；")}`;
+      const sum = (k) => lines.reduce((a, l) => a + (l[k] || 0), 0);
+      const worst = lines.reduce((a, l) => (l.bottleneck_ct > a.bottleneck_ct ? l : a));
+      $("latestStats").innerHTML = tilesHtml([["事件筆數", sum("events")], ["批次數", lines.length],
+        ["完成件數", sum("finished")], ["在製品", sum("wip")], ["最慢工站", `${worst.bottleneck}（${worst.bottleneck_ct}s）`]]);
+      $("groupInfo").textContent = `分享這一組的連結：${location.origin}${location.pathname}?group=${selected}`;
+    }
+    renderLines(lines, d.stations || []);
   }
 
   function renderResults(rows) {
     if (!rows || !rows.length || rows[0].id === lastTopId) return;
     lastTopId = rows[0].id;
-    $("latest").textContent = rows[0].message;
-    const d = (rows.find((r) => r.data && r.data.lines) || {}).data;
-    if (d) {
-      const avgBal = d.lines.length ? (d.lines.reduce((a, l) => a + l.balance_pct, 0) / d.lines.length).toFixed(1) : "—";
-      const tiles = [["事件筆數", d.events], ["組數", d.groups], ["工站數", d.stations.length],
-        ["產出率最高", `${d.best.group_id}（${d.best.throughput_per_hr}/hr）`], ["平均平衡率", `${avgBal}%`]];
-      $("latestStats").innerHTML = tiles.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
-      renderLines(d);
-    }
+    lastRows = rows;
+    const withData = rows.find((r) => r.data && r.data.lines);
+    if (withData) lastData = withData.data;
+    renderView();
     $("log").innerHTML = rows.map((r) => `<li><time>${fmtTime(r.created_at)}</time>${esc(r.message)}</li>`).join("");
   }
 

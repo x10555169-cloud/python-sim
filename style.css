@@ -31,3 +31,9 @@ th{color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--car
 th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
 td.bn{background:var(--hl);font-weight:700}
 .card{min-width:0}
+
+.groupbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.groupbar label{font-weight:600}
+select{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);min-width:160px}
+.groupbar .hint{margin:0}
+.empty{color:var(--muted);text-align:left!important;padding:16px 8px}
