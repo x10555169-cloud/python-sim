@@ -50,88 +50,121 @@
   let lastRows = [];
   let lastData = null;
 
-  // ---------- 組別選擇（只影響自己的畫面；Python 仍然計算全部組別） ----------
+  // ---------- 組別、批次選擇（只影響自己的畫面；Python 仍然計算全部） ----------
   const GROUP_COUNT = C.GROUP_COUNT || 25;
-  const groupKey = "sim-group";
-  const urlGroup = new URLSearchParams(location.search).get("group");
-  let selected = (urlGroup || (() => { try { return localStorage.getItem(groupKey); } catch { return null; } })() || "ALL").toUpperCase();
+  const params = new URLSearchParams(location.search);
+  const loadPref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const savePref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+  let selected = (params.get("group") || loadPref("sim-group") || "ALL").toUpperCase();
+  let selBatch = (params.get("batch") || loadPref("sim-batch") || "ALL").toUpperCase();
   const baseGroups = Array.from({ length: GROUP_COUNT }, (_, i) => `G${String(i + 1).padStart(2, "0")}`);
+  const batchLabel = (b) => (b === "FORMAL" ? "正式" : b);
+  const sortBatch = (a, b) => (a === "FORMAL") - (b === "FORMAL") || a.localeCompare(b, "en", { numeric: true });
 
-  function buildGroupOptions() {
-    const counts = {};
-    (lastData?.lines || []).forEach((l) => (counts[l.group_id] = (counts[l.group_id] || 0) + l.events));
-    const ids = [...new Set([...baseGroups, ...Object.keys(counts)])].sort();
-    if (selected !== "ALL" && !ids.includes(selected)) ids.push(selected);
-    const opts = [`<option value="ALL">全部組別</option>`].concat(ids.map((g) =>
-      `<option value="${esc(g)}">${esc(g)}${counts[g] ? `（${counts[g]} 筆）` : "（無資料）"}</option>`));
-    const html = opts.join("");
-    if ($("groupSel").dataset.html !== html) {
-      $("groupSel").innerHTML = html;
-      $("groupSel").dataset.html = html;
-    }
-    $("groupSel").value = selected;
+  function setOptions(id, html) {
+    if ($(id).dataset.html !== html) { $(id).innerHTML = html; $(id).dataset.html = html; }
   }
 
-  $("groupSel").onchange = (ev) => {
-    selected = ev.target.value;
-    try { localStorage.setItem(groupKey, selected); } catch {}
+  function buildOptions() {
+    const lines = lastData?.lines || [];
+    // 組別選單：筆數依「目前選的批次」計算
+    const gCount = {};
+    lines.filter((l) => selBatch === "ALL" || l.batch === selBatch)
+      .forEach((l) => (gCount[l.group_id] = (gCount[l.group_id] || 0) + l.events));
+    const gIds = [...new Set([...baseGroups, ...lines.map((l) => l.group_id)])].sort();
+    if (selected !== "ALL" && !gIds.includes(selected)) gIds.push(selected);
+    setOptions("groupSel", [`<option value="ALL">全部組別</option>`].concat(gIds.map((g) =>
+      `<option value="${esc(g)}">${esc(g)}${gCount[g] ? `（${gCount[g]} 筆）` : "（無資料）"}</option>`)).join(""));
+    $("groupSel").value = selected;
+
+    // 批次選單：依資料自動產生；筆數依「目前選的組別」計算
+    const bCount = {};
+    lines.filter((l) => selected === "ALL" || l.group_id === selected)
+      .forEach((l) => (bCount[l.batch] = (bCount[l.batch] || 0) + l.events));
+    const bIds = [...new Set(lines.map((l) => l.batch))].sort(sortBatch);
+    if (selBatch !== "ALL" && !bIds.includes(selBatch)) bIds.push(selBatch);
+    setOptions("batchSel", [`<option value="ALL">全部批次</option>`].concat(bIds.map((b) =>
+      `<option value="${esc(b)}">${esc(batchLabel(b))}${bCount[b] ? `（${bCount[b]} 筆）` : "（無資料）"}</option>`)).join(""));
+    $("batchSel").value = selBatch;
+  }
+
+  function onFilterChange() {
+    selected = $("groupSel").value;
+    selBatch = $("batchSel").value;
+    savePref("sim-group", selected);
+    savePref("sim-batch", selBatch);
     const u = new URL(location.href);
-    if (selected === "ALL") u.searchParams.delete("group"); else u.searchParams.set("group", selected);
+    selected === "ALL" ? u.searchParams.delete("group") : u.searchParams.set("group", selected);
+    selBatch === "ALL" ? u.searchParams.delete("batch") : u.searchParams.set("batch", selBatch);
     history.replaceState(null, "", u);
     renderView();
-  };
+  }
+  $("groupSel").onchange = onFilterChange;
+  $("batchSel").onchange = onFilterChange;
 
-  function renderLines(lines, st) {
+  function renderLines(lines, st, emptyText) {
     const head = ["組別", "批次", "完成件數", "在製品", "瓶頸站", "平衡率", "產出/小時", "經過(分)", ...st];
     const body = lines.length ? lines.map((l) => {
       const cells = st.map((s) => {
         const v = l.avg_ct[s];
         return `<td class="${s === l.bottleneck ? "bn" : ""}">${v ?? "—"}</td>`;
       }).join("");
-      return `<tr><td>${esc(l.group_id)}</td><td>${esc(l.batch)}</td><td>${l.finished}</td><td>${l.wip}</td>`
+      return `<tr><td>${esc(l.group_id)}</td><td>${esc(batchLabel(l.batch))}</td><td>${l.finished}</td><td>${l.wip}</td>`
         + `<td>${esc(l.bottleneck)}（${l.bottleneck_ct}s）</td><td>${l.balance_pct}%</td>`
         + `<td>${l.throughput_per_hr}</td><td>${l.elapsed_min}</td>${cells}</tr>`;
-    }).join("") : `<tr><td class="empty" colspan="${head.length}">${esc(selected)} 目前沒有資料</td></tr>`;
+    }).join("") : `<tr><td class="empty" colspan="${head.length}">${esc(emptyText)}</td></tr>`;
     $("lines").innerHTML = `<thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
   }
 
   const tilesHtml = (tiles) => tiles.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
 
   function renderView() {
-    buildGroupOptions();
+    buildOptions();
     const top = lastRows[0];
     const d = lastData;
     if (!top) return;
-    const all = selected === "ALL";
-    $("linesTitle").textContent = all ? "各組生產線分析" : `${selected} 生產線分析`;
+    const allG = selected === "ALL";
+    const allB = selBatch === "ALL";
+    const scope = [allG ? "" : selected, allB ? "" : batchLabel(selBatch)].filter(Boolean).join(" ");
+    $("linesTitle").textContent = scope ? `${scope} 生產線分析` : "各組生產線分析";
 
     if (!d) { $("latest").textContent = top.message; return; }
-    const lines = all ? d.lines : d.lines.filter((l) => l.group_id === selected);
+    const lines = d.lines.filter((l) => (allG || l.group_id === selected) && (allB || l.batch === selBatch));
+    const t = new Date(top.created_at || Date.now()).toLocaleTimeString("zh-TW", { hour12: false, timeZone: "Asia/Taipei" });
+    const sum = (k) => lines.reduce((a, l) => a + (l[k] || 0), 0);
+    // 排名：選了批次 → 跟同一批次的各組比；沒選 → 跟全部「組別＋批次」比
+    const pool = d.lines.filter((l) => allB || l.batch === selBatch);
+    const ranked = [...pool].sort((a, b) => b.throughput_per_hr - a.throughput_per_hr);
+    const rankOf = (l) => `${ranked.indexOf(l) + 1}/${ranked.length}`;
 
-    if (all) {
+    const u = new URL(location.href);
+    $("groupInfo").textContent = scope ? `分享這個畫面：${u.origin}${u.pathname}${u.search}` : `共 ${d.groups} 組有資料`;
+
+    if (!lines.length) {
+      $("latest").textContent = `${scope} 目前沒有資料（Python 第 ${top.tick ?? "—"} 次執行時）`;
+      $("latestStats").innerHTML = "";
+    } else if (allG && allB) {
       $("latest").textContent = top.message;
-      const avgBal = d.lines.length ? (d.lines.reduce((a, l) => a + l.balance_pct, 0) / d.lines.length).toFixed(1) : "—";
+      const avgBal = (sum("balance_pct") / lines.length).toFixed(1);
       $("latestStats").innerHTML = tilesHtml([["事件筆數", d.events], ["組數", d.groups], ["工站數", d.stations.length],
         ["產出率最高", `${d.best.group_id}（${d.best.throughput_per_hr}/hr）`], ["平均平衡率", `${avgBal}%`]]);
-      $("groupInfo").textContent = `共 ${d.groups} 組有資料`;
-    } else if (!lines.length) {
-      $("latest").textContent = `${selected} 目前沒有資料（Python 第 ${top.tick ?? "—"} 次執行時）`;
-      $("latestStats").innerHTML = "";
-      $("groupInfo").textContent = "這一組還沒有掃碼紀錄";
+    } else if (allG) {
+      // 全部組別、單一批次：比較各組
+      const best = ranked[0];
+      const avgBal = (sum("balance_pct") / lines.length).toFixed(1);
+      $("latest").textContent = `[${t}] ${batchLabel(selBatch)}：共 ${lines.length} 組，產出率最高 ${best.group_id}（每小時 ${best.throughput_per_hr} 件），平均平衡率 ${avgBal}%`;
+      $("latestStats").innerHTML = tilesHtml([["事件筆數", sum("events")], ["組數", lines.length], ["完成件數", sum("finished")],
+        ["產出率最高", `${best.group_id}（${best.throughput_per_hr}/hr）`], ["平均平衡率", `${avgBal}%`]]);
     } else {
-      // 產出率排名：在所有「組別＋批次」裡排第幾
-      const ranked = [...d.lines].sort((a, b) => b.throughput_per_hr - a.throughput_per_hr);
+      // 單一組別（全部或單一批次）
       const parts = lines.map((l) =>
-        `${l.batch} 完成 ${l.finished} 件、瓶頸 ${l.bottleneck}（${l.bottleneck_ct} 秒）、平衡率 ${l.balance_pct}%、每小時 ${l.throughput_per_hr} 件（排名 ${ranked.indexOf(l) + 1}/${ranked.length}）`);
-      const t = new Date(top.created_at || Date.now()).toLocaleTimeString("zh-TW", { hour12: false, timeZone: "Asia/Taipei" });
+        `${batchLabel(l.batch)} 完成 ${l.finished} 件、瓶頸 ${l.bottleneck}（${l.bottleneck_ct} 秒）、平衡率 ${l.balance_pct}%、每小時 ${l.throughput_per_hr} 件（排名 ${rankOf(l)}）`);
       $("latest").textContent = `[${t}] ${selected}：${parts.join("；")}`;
-      const sum = (k) => lines.reduce((a, l) => a + (l[k] || 0), 0);
       const worst = lines.reduce((a, l) => (l.bottleneck_ct > a.bottleneck_ct ? l : a));
-      $("latestStats").innerHTML = tilesHtml([["事件筆數", sum("events")], ["批次數", lines.length],
+      $("latestStats").innerHTML = tilesHtml([["事件筆數", sum("events")], allB ? ["批次數", lines.length] : ["排名", rankOf(lines[0])],
         ["完成件數", sum("finished")], ["在製品", sum("wip")], ["最慢工站", `${worst.bottleneck}（${worst.bottleneck_ct}s）`]]);
-      $("groupInfo").textContent = `分享這一組的連結：${location.origin}${location.pathname}?group=${selected}`;
     }
-    renderLines(lines, d.stations || []);
+    renderLines(lines, d.stations || [], `${scope} 目前沒有資料`);
   }
 
   function renderResults(rows) {
