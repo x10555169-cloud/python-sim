@@ -110,6 +110,19 @@ def _running() -> bool:
     return _task is not None and not _task.done()
 
 
+async def startup_snapshot() -> None:
+    """Render 休眠醒來後記憶體是空的：先讀一次資料庫算一次，網頁一打開就有結果。"""
+    try:
+        if (await store.latest_results(1)):
+            return
+        events = await store.fetch_events(EVENT_TABLE)
+        message, data = compute(0, events)
+        await store.add_result({"run_id": "startup", "tick": 0, "data": data,
+                                "message": message.replace("第 0 次執行", "啟動時的資料快照")})
+    except Exception:
+        log.exception("startup snapshot failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 服務重啟恢復：資料庫狀態是 running 就接著跑（暫停中的維持暫停）
@@ -117,6 +130,8 @@ async def lifespan(app: FastAPI):
         st = await store.get_status()
         if st.get("running"):
             _start_task(st.get("run_id") or "resumed")
+        elif LIVE:
+            asyncio.create_task(startup_snapshot())
     except Exception:
         log.exception("resume failed")
     yield

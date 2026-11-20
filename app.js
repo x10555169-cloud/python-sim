@@ -58,6 +58,7 @@
   let selected = (params.get("group") || loadPref("sim-group") || "ALL").toUpperCase();
   let selBatch = (params.get("batch") || loadPref("sim-batch") || "ALL").toUpperCase();
   const baseGroups = Array.from({ length: GROUP_COUNT }, (_, i) => `G${String(i + 1).padStart(2, "0")}`);
+  const baseBatches = C.BATCHES || ["TEST1", "TEST2", "FORMAL"];
   const batchLabel = (b) => (b === "FORMAL" ? "正式" : b);
   const sortBatch = (a, b) => (a === "FORMAL") - (b === "FORMAL") || a.localeCompare(b, "en", { numeric: true });
 
@@ -81,7 +82,7 @@
     const bCount = {};
     lines.filter((l) => selected === "ALL" || l.group_id === selected)
       .forEach((l) => (bCount[l.batch] = (bCount[l.batch] || 0) + l.events));
-    const bIds = [...new Set(lines.map((l) => l.batch))].sort(sortBatch);
+    const bIds = [...new Set([...baseBatches, ...lines.map((l) => l.batch)])].sort(sortBatch);
     if (selBatch !== "ALL" && !bIds.includes(selBatch)) bIds.push(selBatch);
     setOptions("batchSel", [`<option value="ALL">全部批次</option>`].concat(bIds.map((b) =>
       `<option value="${esc(b)}">${esc(batchLabel(b))}${bCount[b] ? `（${bCount[b]} 筆）` : "（無資料）"}</option>`)).join(""));
@@ -122,13 +123,20 @@
     buildOptions();
     const top = lastRows[0];
     const d = lastData;
-    if (!top) return;
+    if (!top) {
+      $("groupInfo").textContent = "目前還沒有分析結果，請先按「開始模擬」";
+      return;
+    }
     const allG = selected === "ALL";
     const allB = selBatch === "ALL";
     const scope = [allG ? "" : selected, allB ? "" : batchLabel(selBatch)].filter(Boolean).join(" ");
     $("linesTitle").textContent = scope ? `${scope} 生產線分析` : "各組生產線分析";
 
-    if (!d) { $("latest").textContent = top.message; return; }
+    if (!d) {
+      $("latest").textContent = top.message;
+      $("groupInfo").textContent = "目前還沒有分析結果，請先按「開始模擬」";
+      return;
+    }
     const lines = d.lines.filter((l) => (allG || l.group_id === selected) && (allB || l.batch === selBatch));
     const t = new Date(top.created_at || Date.now()).toLocaleTimeString("zh-TW", { hour12: false, timeZone: "Asia/Taipei" });
     const sum = (k) => lines.reduce((a, l) => a + (l[k] || 0), 0);
@@ -229,6 +237,7 @@
   $("btnResume").onclick = () => control("resume");
   $("btnStop").onclick = () => control("stop");
 
+  buildOptions();
   refresh();
   setInterval(refresh, MODE === "static" ? 30000 : C.POLL_MS || 3000);
 })();
