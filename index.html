@@ -11,6 +11,13 @@
     <h1>Python 課堂模擬</h1>
     <div id="conn" class="pill">連線中…</div>
   </header>
+  <nav class="topnav" aria-label="相關連結">
+    <a href="./" aria-current="page">前端網頁</a>
+    <a id="lnkBackend" href="#" target="_blank" rel="noopener">後端首頁</a>
+    <a id="lnkApiDocs" href="#" target="_blank" rel="noopener">API 文件</a>
+    <a href="docs.html" target="_blank" rel="noopener">系統說明</a>
+    <a id="lnkRepo" href="https://github.com/x10555169-cloud/python-sim" target="_blank" rel="noopener">GitHub</a>
+  </nav>
 
   <main>
     <section class="card" id="controlCard">
@@ -34,9 +41,10 @@
     <section class="card groupbar">
       <label for="groupSel">選擇組別</label>
       <select id="groupSel"></select>
-      <label for="batchSel">選擇批次</label>
+      <label for="batchSel">選擇場次</label>
       <select id="batchSel"></select>
       <span class="hint" id="groupInfo"></span>
+      <span class="teacher-links" id="teacherLinks"></span>
     </section>
 
     <section class="card">
@@ -46,8 +54,24 @@
       <dl class="stats" id="latestStats"></dl>
     </section>
     <section class="card">
-      <h2><span id="linesTitle">各組生產線分析</span> <span class="sub">（各站平均作業秒數，<mark>標色</mark> = 瓶頸站）</span></h2>
+      <h2><span id="linesTitle">各組生產線分析</span> <span class="sub">（節拍時間 = 總耗時 ÷ 終點站產出組數；各站為平均 Cycle Time，<mark>標色</mark> = 瓶頸站）</span></h2>
       <div class="table-wrap"><table id="lines"></table></div>
+      <div id="stationBox" hidden>
+        <h3 id="stationTitle"></h3>
+        <div class="table-wrap"><table id="stationTable"></table></div>
+        <p class="hint" id="stationNote"></p>
+      </div>
+    </section>
+
+    <section class="card" id="roundCard">
+      <h2>場次紀錄 <span class="sub" id="roundSub"></span></h2>
+      <p class="hint" id="roundHint"></p>
+      <div class="table-wrap"><table id="roundTable"></table></div>
+      <div class="row round-actions">
+        <button id="btnSaveRounds" class="primary">儲存到資料庫</button>
+        <button id="btnResetRounds">取消修改</button>
+        <span class="hint" id="roundMsg" role="status"></span>
+      </div>
     </section>
 
     <section class="card">

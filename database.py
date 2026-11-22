@@ -44,6 +44,21 @@ class SupabaseStore:
                 break
         return rows
 
+    async def fetch_flows(self) -> list[dict]:
+        """老師的 station_flow：每組每場的工站流程（唯讀）。表不存在時回傳空清單。"""
+        try:
+            return await self._get("station_flow", {"select": "group_id,station_id,next_station_id", "limit": 5000})
+        except httpx.HTTPStatusError:
+            return []
+
+    async def fetch_modes(self) -> list[dict]:
+        """老師的 station_wip 裡 GROUP_MODE / SYSTEM_MODE 列：每組目前場次（唯讀）。"""
+        try:
+            return await self._get("station_wip", {"select": "group_id,station_id,input_wip,updated_at",
+                                                   "station_id": "in.(GROUP_MODE,SYSTEM_MODE)"})
+        except httpx.HTTPStatusError:
+            return []
+
     async def add_events(self, table: str, rows: list[dict]) -> None:
         if not rows:
             return
@@ -88,6 +103,12 @@ class ReadOnlyEventsStore:
     async def fetch_events(self, table: str, limit: int = 20000) -> list[dict]:
         return await self.remote.fetch_events(table, limit)
 
+    async def fetch_flows(self) -> list[dict]:
+        return await self.remote.fetch_flows()
+
+    async def fetch_modes(self) -> list[dict]:
+        return await self.remote.fetch_modes()
+
     async def add_events(self, table: str, rows: list[dict]) -> None:
         raise RuntimeError("唯讀模式不能寫入 event")
 
@@ -110,6 +131,12 @@ class MemoryStore:
 
     async def fetch_events(self, table: str, limit: int = 10000) -> list[dict]:
         return sorted(self.events.get(table, []), key=lambda e: str(e["finish_time"]))[:limit]
+
+    async def fetch_flows(self) -> list[dict]:
+        return []
+
+    async def fetch_modes(self) -> list[dict]:
+        return []
 
     async def add_events(self, table: str, rows: list[dict]) -> None:
         cur = {e["id"]: e for e in self.events.get(table, [])}

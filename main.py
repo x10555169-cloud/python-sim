@@ -16,6 +16,9 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+
+import home_page
 
 from database import MemoryStore, make_store, now_iso
 from excel_loader import load_events
@@ -36,6 +39,8 @@ REPLAY_BATCH = int(os.getenv("REPLAY_BATCH", "5"))
 # true：event 表沒有變化時不寫結果（避免灌爆結果表）；記憶體模式預設每 5 秒都寫一筆
 ONLY_ON_NEW_DATA = os.getenv("ONLY_ON_NEW_DATA", "true" if LIVE else "false").lower() == "true"
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://x10555169-cloud.github.io/python-sim/")
+REPO_URL = os.getenv("REPO_URL", "https://github.com/x10555169-cloud/python-sim")
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
 
 _excel: list[dict] | None = None
@@ -73,8 +78,11 @@ async def run_loop(run_id: str) -> None:
                 await store.add_events(EVENT_TABLE, [{k: v for k, v in e.items() if k != "part_no"} for e in batch])
                 pos += len(batch)
 
-            events = await store.fetch_events(EVENT_TABLE)
-            sig = (len(events), max((str(e.get("finish_time")) for e in events), default=None))
+            events, flows, modes = await asyncio.gather(
+                store.fetch_events(EVENT_TABLE), store.fetch_flows(), store.fetch_modes())
+            # 指紋：event 筆數、最晚完工時間、流程、目前場次——任何一個變了（有人掃碼、老師改流程或切換場次）就重算
+            sig = (len(events), max((str(e.get("finish_time")) for e in events), default=None),
+                   json.dumps(flows, sort_keys=True, default=str), json.dumps(modes, sort_keys=True, default=str))
             checked += 1
             if sig == last_sig and ONLY_ON_NEW_DATA:
                 # 沒有新資料：不重算、不寫結果，只更新「最後檢查」
@@ -83,7 +91,7 @@ async def run_loop(run_id: str) -> None:
             else:
                 last_sig = sig
                 tick += 1
-                message, data = compute(tick, events)
+                message, data = compute(tick, events, flows, modes)
                 if REPLAY:
                     message += f"（重播進度 {pos}/{len(excel_events())}）"
                 await store.add_result({"run_id": run_id, "tick": tick, "message": message, "data": data})
@@ -115,8 +123,9 @@ async def startup_snapshot() -> None:
     try:
         if (await store.latest_results(1)):
             return
-        events = await store.fetch_events(EVENT_TABLE)
-        message, data = compute(0, events)
+        events, flows, modes = await asyncio.gather(
+            store.fetch_events(EVENT_TABLE), store.fetch_flows(), store.fetch_modes())
+        message, data = compute(0, events, flows, modes)
         await store.add_result({"run_id": "startup", "tick": 0, "data": data,
                                 "message": message.replace("第 0 次執行", "啟動時的資料快照")})
     except Exception:
@@ -139,7 +148,20 @@ async def lifespan(app: FastAPI):
         _task.cancel()
 
 
-app = FastAPI(title="Python 課堂模擬 API", lifespan=lifespan)
+app = FastAPI(
+    title="Python 課堂模擬 API",
+    description=(
+        "椅子組裝產線的 Python 分析服務。每 5 秒讀取 Supabase 的 event 表，有新資料才重新計算各組的"
+        "瓶頸站、平衡率、完成件數與每小時產出。\n\n"
+        f"- 前端網頁：{FRONTEND_URL}\n- 後端首頁：[/](/)\n\n"
+        "點開下方任一功能 → **Try it out** → **Execute** 就能直接測試。"
+    ),
+    openapi_tags=[
+        {"name": "查詢", "description": "讀取狀態與結果（不會改變任何東西）"},
+        {"name": "控制", "description": "開始／暫停／繼續／停止模擬"},
+    ],
+    lifespan=lifespan,
+)
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["GET", "POST"], allow_headers=["*"])
 
 
@@ -148,17 +170,29 @@ def check_token(token: str | None) -> None:
         raise HTTPException(status_code=401, detail="管理密碼錯誤")
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def home():
+    st = await store.get_status()
+    latest_rows = await store.latest_results(30)
+    latest = next((r for r in latest_rows if r.get("data")), latest_rows[0] if latest_rows else None)
+    db_host = os.getenv("SUPABASE_URL", "").replace("https://", "").rstrip("/")
+    return home_page.render(
+        status={**st, "running": _running(), "paused": bool(st.get("paused")) and not _running()},
+        latest=latest, mode=store.mode, db_host=db_host, event_table=EVENT_TABLE,
+        interval=INTERVAL, frontend_url=FRONTEND_URL, repo_url=REPO_URL)
+
+
+@app.get("/api", tags=["查詢"], summary="服務資訊（JSON）")
 async def root():
-    return {"ok": True, "service": "python-sim", "store": store.mode, "docs": "/docs"}
+    return {"ok": True, "service": "python-sim", "store": store.mode, "docs": "/docs", "frontend": FRONTEND_URL}
 
 
-@app.get("/health")
+@app.get("/health", tags=["查詢"], summary="健康檢查")
 async def health():
     return {"ok": True, "store": store.mode, "running": _running(), "time": now_iso()}
 
 
-@app.get("/status")
+@app.get("/status", tags=["查詢"], summary="模擬狀態")
 async def status():
     st = await store.get_status()
     return {**st, "running": _running(), "paused": bool(st.get("paused")) and not _running(), "store": store.mode, "interval": INTERVAL,
@@ -174,7 +208,7 @@ async def _cancel_task() -> bool:
     return True
 
 
-@app.post("/start")
+@app.post("/start", tags=["控制"], summary="開始模擬")
 async def start(x_admin_token: str | None = Header(default=None)):
     check_token(x_admin_token)
     async with _lock:
@@ -193,7 +227,7 @@ async def start(x_admin_token: str | None = Header(default=None)):
         return {"ok": True, "run_id": run_id}
 
 
-@app.post("/pause")
+@app.post("/pause", tags=["控制"], summary="暫停模擬（保留進度）")
 async def pause(x_admin_token: str | None = Header(default=None)):
     """暫停：停止計算，但保留執行次數、重播進度與 run_id。"""
     check_token(x_admin_token)
@@ -207,7 +241,7 @@ async def pause(x_admin_token: str | None = Header(default=None)):
         return {"ok": True, "tick": st.get("tick")}
 
 
-@app.post("/resume")
+@app.post("/resume", tags=["控制"], summary="繼續模擬")
 async def resume(x_admin_token: str | None = Header(default=None)):
     """繼續：從暫停的地方接著跑；暫停的時間不算進 MAX_RUN_MINUTES。"""
     check_token(x_admin_token)
@@ -229,7 +263,7 @@ async def resume(x_admin_token: str | None = Header(default=None)):
         return {"ok": True, "tick": st.get("tick")}
 
 
-@app.post("/stop")
+@app.post("/stop", tags=["控制"], summary="停止模擬")
 async def stop(x_admin_token: str | None = Header(default=None)):
     check_token(x_admin_token)
     async with _lock:
@@ -241,6 +275,6 @@ async def stop(x_admin_token: str | None = Header(default=None)):
         return {"ok": True, "was_running": was}
 
 
-@app.get("/results")
+@app.get("/results", tags=["查詢"], summary="最近的計算結果")
 async def results(limit: int = 20):
     return await store.latest_results(min(max(limit, 1), 200))

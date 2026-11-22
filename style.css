@@ -37,3 +37,31 @@ td.bn{background:var(--hl);font-weight:700}
 select{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);min-width:160px}
 .groupbar .hint{margin:0}
 .empty{color:var(--muted);text-align:left!important;padding:16px 8px}
+
+.topnav{display:flex;flex-wrap:wrap;gap:6px;max-width:960px;margin:-4px auto 12px;padding:0 16px}
+.topnav a{font-size:13px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted);text-decoration:none;background:var(--card)}
+.topnav a:hover{color:var(--accent);border-color:var(--accent)}
+.topnav a[aria-current="page"]{color:var(--accent);border-color:var(--accent)}
+
+.round-actions{align-items:center;margin-top:12px}
+.round-actions .hint{margin:0}
+#roundTable td,#roundTable th{text-align:left;vertical-align:middle}
+#roundTable td.c{text-align:center}
+#roundTable input[type=checkbox]{width:20px;height:20px;cursor:pointer}
+#roundTable select,#roundTable input[type=text]{padding:4px 8px;font-size:13px;min-width:0}
+#roundTable input[type=text]{width:100%;min-width:140px}
+#roundTable tr.on td:first-child{font-weight:700;color:var(--accent)}
+#roundTable tr.dirty{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.tag{display:inline-block;font-size:12px;padding:0 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.tag.pass{color:var(--ok)} .tag.fail{color:var(--bad)} .tag.sel{color:var(--accent)}
+.muted{color:var(--muted)}
+
+.teacher-links{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}
+.teacher-links a{font-size:13px;padding:3px 10px;border:1px solid var(--line);border-radius:999px;color:var(--accent);text-decoration:none}
+.tag.warn{color:#b7791f}
+#lines td.flow{white-space:normal;min-width:140px;text-align:left;font-size:12px}
+#lines tr.cur td:first-child{font-weight:700}
+#stationBox h3{font-size:15px;margin:18px 0 8px}
+#stationTable tr.hl td{background:color-mix(in srgb,#f59e0b 18%,transparent)}
+#stationTable td,#stationTable th{text-align:right}
+#stationTable td:first-child,#stationTable th:first-child{text-align:left}
