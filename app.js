@@ -152,7 +152,7 @@
   // 單一組別 + 單一場次：各工站明細（同老師監控中心的統計表）
   function renderStations(line) {
     const box = $("stationBox");
-    if (!line) { box.hidden = true; return; }
+    if (!line || !line.station_stats) { box.hidden = true; return; }
     box.hidden = false;
     $("stationTitle").textContent = `${line.group_id} ${batchLabel(line.batch)} 各工站明細`;
     const rows = Object.entries(line.station_stats).map(([st, s]) =>
@@ -207,7 +207,9 @@
     const avgBal = lines.length ? (sum("balance_pct") / lines.length).toFixed(1) : "—";
 
     const u = new URL(location.href);
-    $("groupInfo").textContent = scope ? `分享這個畫面：${u.origin}${u.pathname}${u.search}` : `共 ${d.groups} 組、${d.lines.length} 個場次有資料`;
+    $("groupInfo").textContent = oldBackend
+      ? "⚠ 後端（Render）還是舊版，流程、等待時間、各工站明細暫時看不到；節拍時間由舊資料換算。請確認 GitHub 上有 home_page.py，且 Render 部署成功。"
+      : scope ? `分享這個畫面：${u.origin}${u.pathname}${u.search}` : `共 ${d.groups} 組、${d.lines.length} 個場次有資料`;
 
     if (!lines.length) {
       $("latest").textContent = `${scope} 目前沒有資料（Python 第 ${top.tick ?? "—"} 次執行時）`;
@@ -373,12 +375,30 @@
     }
   };
 
+  // 後端（Render）還是舊版時，資料沒有節拍時間等新欄位：用舊欄位補上，並提醒更新
+  let oldBackend = false;
+  function normalize(d) {
+    oldBackend = (d.lines || []).some((l) => l.output_sets === undefined);
+    (d.lines || []).forEach((l) => {
+      if (l.output_sets === undefined) l.output_sets = l.finished ?? 0;
+      if (l.total_sec === undefined) l.total_sec = l.elapsed_min != null ? Math.round(l.elapsed_min * 60) : null;
+      if (l.takt_sec === undefined) l.takt_sec = l.throughput_per_hr ? Math.round(3600 / l.throughput_per_hr * 10) / 10 : null;
+      if (l.terminal_reached === undefined) l.terminal_reached = (l.finished ?? 0) > 0;
+      if (l.output_station === undefined) l.output_station = (l.stations || []).slice(-1)[0];
+      if (l.final_station === undefined) l.final_station = l.output_station;
+      if (l.wait_sec === undefined) l.wait_sec = null;
+      if (l.long_span === undefined) l.long_span = false;
+      if (!l.stations) l.stations = Object.keys(l.avg_ct || {});
+    });
+    return d;
+  }
+
   function renderResults(rows) {
     if (!rows || !rows.length || rows[0].id === lastTopId) return;
     lastTopId = rows[0].id;
     lastRows = rows;
     const withData = rows.find((r) => r.data && r.data.lines);
-    if (withData) lastData = withData.data;
+    if (withData) lastData = normalize(withData.data);
     renderView();
     $("log").innerHTML = rows.map((r) => `<li><time>${fmtTime(r.created_at)}</time>${esc(r.message)}</li>`).join("");
   }
