@@ -1,4 +1,5 @@
 # 每次 push 到 main：GitHub 執行 Python（讀 Excel → 分析）→ 把結果和網頁一起發佈到 GitHub Pages
+# 2026/11 更新：GitHub 停用 Node.js 20，全部 actions 換成 Node.js 24 的版本
 name: Run Python and deploy to GitHub Pages
 on:
   push:
@@ -14,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: { name: github-pages, url: "${{ steps.deploy.outputs.page_url }}" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Arrange folders (若檔案被上傳在最外層，自動放回 backend/ 與 frontend/)
         run: |
           if [ ! -d backend ]; then
@@ -22,17 +23,18 @@ jobs:
             cp *.py requirements.txt backend/
             cp *.xlsx backend/data/ie_chair_data.xlsx
             cp index.html style.css app.js config.js frontend/
+            [ -f docs.html ] && cp docs.html frontend/ || true
           fi
           ls -R backend frontend
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
       - name: Install packages
         run: pip install openpyxl
       - name: Run Python (目標一、二)
         working-directory: backend
         run: python build_static.py
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with: { path: frontend }
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
