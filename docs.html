@@ -78,7 +78,7 @@ pre.mermaid{background:var(--surface);text-align:center;font-family:var(--f-body
     <li><a href="#data">3 資料統整</a></li><li><a href="#algo">4 演算法</a></li>
     <li><a href="#trace">5 實際計算過程</a></li>
     <li><a href="#loop">6 每 5 秒的流程</a></li><li><a href="#code">7 程式碼</a></li>
-    <li><a href="#next">8 限制與下一步</a></li>
+    <li><a href="#next">8 公式驗證與下一步</a></li>
   </ul>
 </header>
 
@@ -97,7 +97,7 @@ flowchart TB
     <tbody>
       <tr><td>資料庫</td><td>Supabase（PostgreSQL）</td><td>存放學生掃碼的 <code>event</code> 生產紀錄</td></tr>
       <tr><td>雲端 Python</td><td>Render + FastAPI</td><td>每 5 秒讀資料、檢查是否有新資料、計算指標、提供 API</td></tr>
-      <tr><td>網頁</td><td>GitHub Pages（HTML／JS）</td><td>控制按鈕、組別與批次選擇、顯示結果</td></tr>
+      <tr><td>網頁</td><td>GitHub Pages（HTML／JS）</td><td>控制按鈕、組別與場次選擇、顯示結果、連到老師的監控中心</td></tr>
       <tr><td>自動部署</td><td>GitHub Actions</td><td>上傳檔案後自動發佈網頁；Render 也會自動重新部署 Python</td></tr>
     </tbody>
   </table></div>
@@ -125,8 +125,9 @@ flowchart TB
       <tr><td>目標二：Python 抓資料並顯示在網頁</td><td><span class="status done">完成</span></td><td>讀 Supabase <code>event</code> 表，顯示各組產線分析</td></tr>
       <tr><td>Render 每 5 秒執行</td><td><span class="status done">完成</span></td><td>有新資料才重新計算（Word 文件的要求）</td></tr>
       <tr><td>開始／暫停／繼續／停止</td><td><span class="status done">完成</span></td><td>暫停保留進度；90 分鐘自動停止</td></tr>
-      <tr><td>組別（G01–G25）與批次選擇</td><td><span class="status done">完成</span></td><td>可搭配選擇，有分享連結</td></tr>
-      <tr><td>接上 Supabase</td><td><span class="status part">唯讀</span></td><td>測試資料庫已接上；結果目前存在 Render 記憶體</td></tr>
+      <tr><td>組別（G01–G25）與場次選擇</td><td><span class="status done">完成</span></td><td>可搭配選擇，有分享連結</td></tr>
+      <tr><td>接上 Supabase</td><td><span class="status part">唯讀</span></td><td>讀 event、station_flow（流程）、目前場次；結果目前存在 Render 記憶體</td></tr>
+      <tr><td>公式驗證</td><td><span class="status done">完成</span></td><td>人工驗算、pandas 獨立重算、老師 JavaScript 算法、Excel 公式，四種方法全部一致</td></tr>
       <tr><td>甲班資料備份</td><td><span class="status done">完成</span></td><td><code>backup_supabase.py</code>，輸出 Excel／CSV／JSON</td></tr>
       <tr><td>正式的 Python 模擬</td><td><span class="status todo">待指令</span></td><td>目前是統計分析，見第 7 節</td></tr>
     </tbody>
@@ -140,7 +141,7 @@ flowchart TB
     <thead><tr><th>欄位</th><th>意思</th><th>範例</th><th>有沒有用到</th></tr></thead>
     <tbody>
       <tr><td><code>group_id</code></td><td>組別</td><td>G23</td><td>分組</td></tr>
-      <tr><td><code>product_id</code></td><td>產品編號，前綴是批次</td><td>TEST1-P01</td><td>分批次、算完成件數</td></tr>
+      <tr><td><code>product_id</code></td><td>產品編號，前綴是場次</td><td>TEST1-P01</td><td>判斷場次</td></tr>
       <tr><td><code>station_id</code></td><td>工站</td><td>ST01–ST09</td><td>分工站</td></tr>
       <tr><td><code>start_time</code> / <code>finish_time</code></td><td>開工／完工時間</td><td>2026-11-14T13:16:46</td><td>經過時間、偵測新資料</td></tr>
       <tr><td><code>duration_sec</code></td><td>作業秒數（Cycle Time）</td><td>64.1</td><td>各站平均 CT</td></tr>
@@ -152,32 +153,37 @@ flowchart TB
   <h3>統整步驟</h3>
   <ol class="steps">
     <li><div><b>篩選</b>：只保留 <code>status = COMPLETED</code> 的紀錄。</div></li>
-    <li><div><b>決定批次</b>：從產品編號取出前綴。<code>TEST1-P01</code> → TEST1，<code>TEST2-P03</code> → TEST2，沒有 <code>-</code> 的 <code>P01</code> → 正式（FORMAL）。</div></li>
-    <li><div><b>切成產線</b>：依「組別 + 批次」分組，每一組合是一條獨立的產線。G23 有 TEST1、TEST2 兩次練習，就是兩條線，因為不同次練習的熟練度不同，混在一起算沒有意義。</div></li>
-    <li><div><b>再分工站</b>：每條線依 <code>station_id</code> 收集所有作業秒數。</div></li>
-    <li><div><b>決定最後一站</b>：所有資料裡編號最大的工站（目前是 ST09），用來判斷「完成」。</div></li>
+    <li><div><b>決定場次</b>（同老師的 <code>getTestRoundFromProductId</code>）：<code>TEST2-P01</code> → 第 2 次測試，舊版 <code>TEST-P01</code> → 第 1 次測試，沒有 TEST 的 <code>P01</code> → 正式實作。</div></li>
+    <li><div><b>切成產線</b>：依「組別 + 場次」分組，每一組合是一條獨立的產線。G23 有第 1、2 次測試，就是兩條線，因為每一場的流程和熟練度不同，混在一起算沒有意義。</div></li>
+    <li><div><b>找這一場的流程</b>：從老師的 <code>station_flow</code> 表找，順序同老師的頁面：本場（G23-T2）→ 前面幾場（G23-T1）→ 組別（G23）。</div></li>
+    <li><div><b>再分工站</b>：每條線依 <code>station_id</code> 收集每一件的作業秒數、開工和完工時間。</div></li>
+    <li><div><b>找終點站</b>：流程圖裡沒有「往下一站」連線的工站（有好幾個時取編號最大）。這一場沒有流程設定時，用有資料的最後一站。</div></li>
   </ol>
 </section>
 
 <section id="algo">
   <h2><span class="n">04</span>演算法</h2>
-  <p>以測試資料庫中 <b>G23 TEST1</b>（36 筆）為例，每個指標的算法與結果如下。</p>
+  <p>公式和名詞都跟老師「即時監控中心」一致，已用老師的 JavaScript 逐項比對過（見第 8 節）。以測試資料庫 <b>G23 第 1 次測試</b>（36 筆）為例：</p>
 
   <figure class="chart">
-    <div id="ctChart" role="img" aria-label="G23 TEST1 各工站平均作業秒數長條圖，ST08 為瓶頸 81.2 秒"></div>
-    <figcaption>G23 TEST1 各站平均作業秒數。最高的 ST08 是瓶頸站（81.2 秒）；虛線是 9 站平均 54.4 秒。兩者的差距就是平衡率低於 100% 的原因。</figcaption>
+    <div id="ctChart" role="img" aria-label="G23 第 1 次測試各工站平均作業秒數長條圖，ST08 為瓶頸 81.2 秒"></div>
+    <figcaption>G23 第 1 次測試各站平均 Cycle Time。最高的 ST08 是瓶頸站（81.2 秒）；虛線是 9 站平均 54.4 秒，兩者的差距就是平衡率低於 100% 的原因。</figcaption>
   </figure>
 
   <div class="tbl"><table>
-    <thead><tr><th>指標</th><th>算法</th><th>G23 TEST1</th></tr></thead>
+    <thead><tr><th>指標</th><th>算法</th><th>G23 第 1 次測試</th></tr></thead>
     <tbody>
-      <tr><td>各站平均 CT</td><td class="formula">該站 duration_sec 總和 ÷ 件數</td><td>ST01 64.0 … ST08 81.2</td></tr>
-      <tr class="hl"><td>瓶頸站</td><td class="formula">平均 CT 最大的工站</td><td>ST08（81.2 秒）</td></tr>
-      <tr><td>產線平衡率</td><td class="formula">Σ 各站平均 CT ÷（站數 × 瓶頸 CT）</td><td>489.6 ÷ (9 × 81.2) = <b>67.0%</b></td></tr>
-      <tr><td>完成件數</td><td class="formula">做到最後一站（ST09）的不同產品數</td><td>4 件</td></tr>
-      <tr><td>在製品 WIP</td><td class="formula">第一站開工產品數 − 完成件數（最小 0）</td><td>4 − 4 = 0</td></tr>
-      <tr><td>經過時間</td><td class="formula">最晚完工 − 最早開工</td><td>11.9 分鐘</td></tr>
-      <tr><td>每小時產出</td><td class="formula">完成件數 ÷ 經過秒數 × 3600</td><td>4 ÷ 716 × 3600 ≈ <b>20.1 件</b></td></tr>
+      <tr><td>平均 Cycle Time</td><td class="formula">該站作業秒數總和 ÷ 筆數</td><td>ST08：324.6 ÷ 4 = 81.15 → 81.2</td></tr>
+      <tr class="hl"><td>瓶頸站</td><td class="formula">平均 CT 最大的工站（用未四捨五入的值比）</td><td>ST08（81.15 秒）</td></tr>
+      <tr><td>產線平衡率</td><td class="formula">Σ 各站平均 CT ÷（站數 × 瓶頸 CT）</td><td>489.7 ÷ (9 × 81.15) = <b>67.1%</b></td></tr>
+      <tr><td>終點站</td><td class="formula">流程圖裡沒有往下一站的工站</td><td>沒有流程設定 → 有資料的最後一站 ST09</td></tr>
+      <tr><td>產出組數</td><td class="formula">終點站的完工筆數</td><td>ST09 完工 4 筆 → 4 組</td></tr>
+      <tr><td>總耗時</td><td class="formula">最晚完工 − 最早開工</td><td>07:57:39.6 − 07:45:43.6 = 715.9 秒</td></tr>
+      <tr class="hl"><td>節拍時間</td><td class="formula">總耗時 ÷ 產出組數</td><td>715.9 ÷ 4 = <b>179.0 秒/組</b></td></tr>
+      <tr><td>每小時產出</td><td class="formula">3600 ÷ 節拍時間</td><td>3600 ÷ 179.0 = 20.1 組</td></tr>
+      <tr><td>等待時間</td><td class="formula">同站上一件完工 → 下一件開工（第一件用產線首件開工），只計 0～600 秒</td><td>合計 1494.7 秒</td></tr>
+      <tr><td>稼動率</td><td class="formula">作業時間 ÷（作業 + 等待）</td><td>ST08：324.6 ÷ (324.6 + 328.8) = 49.7%</td></tr>
+      <tr><td>在製品</td><td class="formula">起點站開工的產品數 − 終點站完成的產品數</td><td>4 − 4 = 0</td></tr>
     </tbody>
   </table></div>
 
@@ -185,68 +191,68 @@ flowchart TB
   <div class="tbl"><table>
     <thead><tr><th>項目</th><th>算法</th><th>在哪裡算</th></tr></thead>
     <tbody>
-      <tr><td>產出率最高</td><td>每小時產出最大的線（同分比完成件數）</td><td>Python</td></tr>
-      <tr><td>平均平衡率</td><td>所有線的平衡率取平均</td><td>網頁</td></tr>
-      <tr><td>排名</td><td>依每小時產出由高到低排序。選了批次時只跟同批次的組比</td><td>網頁</td></tr>
+      <tr><td>節拍時間最短</td><td>只比「已做到終點站、至少 2 個工站、沒有跨天資料」的場次</td><td>Python</td></tr>
+      <tr><td>排名</td><td>依節拍時間由短到長。選了場次時只跟同一場次的組比</td><td>網頁</td></tr>
+      <tr><td>目前場次</td><td>讀老師 <code>station_wip</code> 的 GROUP_MODE：101～110 = 第 1～10 次測試、1 = 正式實作</td><td>Python</td></tr>
     </tbody>
   </table></div>
 
-  <div class="note">
-    <p><b>工業工程的意思：</b>瓶頸站決定整條線的速度，最慢那站做不完，後面的站只能等。平衡率越接近 100%，各站工作量越平均；越低代表有的站很忙、有的站在等。</p>
-  </div>
-  <div class="note">
-    <p><b>為什麼「完成」要做到最後一站：</b>測試資料中 G20 只做了 ST01 一站，如果把它自己的最後一站當完成，會被算成每小時 1011 件。改成以整條線的最後一站（ST09）判斷後，沒做完的線產出為 0。</p>
-  </div>
+  <div class="note"><p><b>四捨五入：</b>加總用十進位精確計算，最後才四捨五入到小數 1 位，跟手算一致（81.15 → 81.2）。瓶頸站和平衡率用未四捨五入的值算，避免好幾站四捨五入後同分而選錯。</p></div>
+  <div class="note"><p><b>特殊情況：</b>終點站還沒完工時，用有資料的最後一站試算，並標「未到終點」；一場的資料跨越超過 3 小時，標「跨天資料」，不列入排名。這兩個規則都跟老師的頁面一致。</p></div>
 </section>
 
 <section id="trace">
-  <h2><span class="n">05</span>實際計算過程：G23 TEST1</h2>
-  <p>從資料庫讀到的 223 筆，一步一步變成網頁上的數字。右欄是對應的程式碼（<code>backend/simulation.py</code>）。</p>
+  <h2><span class="n">05</span>實際計算過程：G23 第 1 次測試</h2>
+  <p>從資料庫讀到的 223 筆，一步一步變成網頁上的數字。右欄是 <code>backend/simulation.py</code>（267 行版本）裡對應的行號和程式碼。</p>
 
   <div class="tbl"><table>
     <thead><tr><th>步驟</th><th>做什麼</th><th>結果</th><th>程式碼</th></tr></thead>
     <tbody>
-      <tr><td>0</td><td>讀取資料庫</td><td>223 筆</td><td><code>store.fetch_events()</code></td></tr>
-      <tr><td>1</td><td>只留已完工</td><td>223 筆</td><td>第 72 行 <code>rows = [e for e in events if … == "COMPLETED"]</code></td></tr>
-      <tr><td>2</td><td>取出批次</td><td>TEST1-P01 → TEST1</td><td>第 26–29 行 <code>batch_of()</code></td></tr>
-      <tr><td>3</td><td>依（組別, 批次）分組</td><td>9 條線；(G23, TEST1) 有 36 筆</td><td>第 76–78 行 <code>grouped[(g, b)].append(r)</code></td></tr>
-      <tr><td>4</td><td>找最後一站</td><td>ST09</td><td>第 80–81 行 <code>final_station = all_stations[-1]</code></td></tr>
-      <tr><td>5</td><td>依工站收集秒數</td><td>見下表</td><td>第 34–37 行 <code>by_station[站].append(秒數)</code></td></tr>
-      <tr><td>6</td><td>各站平均</td><td>見下表最右欄</td><td>第 39 行 <code>statistics.fmean(v)</code></td></tr>
-      <tr class="hl"><td>7</td><td>瓶頸站</td><td>ST08（81.2 秒）</td><td>第 50 行 <code>max(avg_ct, key=avg_ct.get)</code></td></tr>
-      <tr><td>8</td><td>平衡率</td><td>489.6 ÷ (9 × 81.2) = 67.0%</td><td>第 52 行 <code>sum(…) / (len(…) * max_ct)</code></td></tr>
-      <tr><td>9</td><td>完成件數</td><td>ST09 出現的產品：4 件</td><td>第 44 行 <code>{產品 for … if 站 == final_station}</code></td></tr>
-      <tr><td>10</td><td>在製品</td><td>ST01 的 4 件 − 完成 4 件 = 0</td><td>第 42、63 行</td></tr>
-      <tr><td>11</td><td>經過時間</td><td>07:45:43.6 → 07:57:39.6 = 715.9 秒</td><td>第 46–48 行 <code>max(ends) - min(starts)</code></td></tr>
-      <tr><td>12</td><td>每小時產出</td><td>4 ÷ 715.9 × 3600 = 20.1 件</td><td>第 65 行</td></tr>
-      <tr><td>13</td><td>9 條線比較</td><td>最高 G25 TEST2（21.8 件）；G23 TEST1 排第 3</td><td>第 86 行 <code>max(lines, key=…)</code></td></tr>
+      <tr><td>0</td><td>讀取資料庫（只讀）</td><td>event 223 筆、流程、目前場次</td><td><code>main.py</code> <code>store.fetch_events()</code>、<code>fetch_flows()</code>、<code>fetch_modes()</code></td></tr>
+      <tr><td>1</td><td>只留已完工</td><td>223 筆</td><td>第 211 行 <code>rows = [e for e in events if … == "COMPLETED"]</code></td></tr>
+      <tr><td>2</td><td>判斷場次</td><td>TEST1-P01 → TEST1</td><td>第 48–58 行 <code>round_of()</code></td></tr>
+      <tr><td>3</td><td>依（組別, 場次）分組</td><td>9 條線；(G23, TEST1) 36 筆</td><td>第 234 行 <code>grouped[(組別, round_of(…))].append(r)</code></td></tr>
+      <tr><td>4</td><td>找這場的流程</td><td>G23 沒有流程設定</td><td>第 238 行 <code>flow_for()</code>（第 84–96 行）</td></tr>
+      <tr><td>5</td><td>依工站收集</td><td>9 站，每站 4 筆</td><td>第 126 行 <code>by_station[站].append(r)</code></td></tr>
+      <tr><td>6</td><td>各站作業時間加總</td><td>見下表</td><td>第 133 行 <code>run = sum(…)</code>（十進位精確加總）</td></tr>
+      <tr><td>7</td><td>各站等待時間</td><td>見下表</td><td>第 135–141 行 <code>if 0 &lt; gap &lt; MAX_GAP_SEC: wait += gap</code></td></tr>
+      <tr><td>8</td><td>各站平均 CT</td><td>見下表</td><td>第 143 行 <code>run / n</code>，第 148 行四捨五入 <code>r1()</code></td></tr>
+      <tr class="hl"><td>9</td><td>瓶頸站</td><td>ST08（81.15 秒）</td><td>第 156 行 <code>max(stations, key=…exact_avg…)</code></td></tr>
+      <tr><td>10</td><td>平衡率</td><td>489.7 ÷ (9 × 81.15) = 67.1%</td><td>第 159 行 <code>sum(…) / (len(…) * max_exact)</code></td></tr>
+      <tr><td>11</td><td>終點站、產出站</td><td>ST09（沒有流程 → 最後一站）</td><td>第 162–166 行 <code>terminal_station()</code>（第 104–108 行）</td></tr>
+      <tr><td>12</td><td>產出組數</td><td>ST09 完工 4 筆</td><td>第 168 行 <code>output_sets = len(output_evs)</code></td></tr>
+      <tr><td>13</td><td>總耗時</td><td>07:45:43.6 → 07:57:39.6 = 715.9 秒</td><td>第 171 行 <code>max(ends_all) - min(starts_all)</code></td></tr>
+      <tr class="hl"><td>14</td><td>節拍時間</td><td>715.9 ÷ 4 = 179.0 秒/組</td><td>第 172 行 <code>total_sec / output_sets</code></td></tr>
+      <tr><td>15</td><td>在製品</td><td>4 − 4 = 0</td><td>第 177–180 行、第 195 行</td></tr>
+      <tr><td>16</td><td>每小時產出</td><td>3600 ÷ 179.0 = 20.1</td><td>第 200 行</td></tr>
+      <tr><td>17</td><td>各場次比較</td><td>最短：G25 第 2 次測試 165.3 秒/組；G23 第 1 次測試排第 3</td><td>第 249–251 行 <code>min(done, key=…takt_sec)</code></td></tr>
     </tbody>
   </table></div>
 
-  <h3>步驟 5–6：G23 TEST1 各站作業秒數</h3>
+  <h3>步驟 5–8：G23 第 1 次測試各工站</h3>
   <div class="tbl"><table>
-    <thead><tr><th>工站</th><th>P01</th><th>P02</th><th>P03</th><th>P04</th><th>加總</th><th>件數</th><th>平均 CT</th></tr></thead>
+    <thead><tr><th>工站</th><th>P01</th><th>P02</th><th>P03</th><th>P04</th><th>作業合計</th><th>平均 CT</th><th>等待合計</th><th>稼動率</th></tr></thead>
     <tbody>
-      <tr><td>ST01</td><td class="num">79.8</td><td class="num">64.1</td><td class="num">68.5</td><td class="num">43.8</td><td class="num">256.2</td><td class="num">4</td><td class="num">64.0</td></tr>
-      <tr><td>ST02</td><td class="num">44.5</td><td class="num">53.1</td><td class="num">62.6</td><td class="num">42.4</td><td class="num">202.6</td><td class="num">4</td><td class="num">50.6</td></tr>
-      <tr><td>ST03</td><td class="num">66.3</td><td class="num">89.3</td><td class="num">60.6</td><td class="num">45.6</td><td class="num">261.8</td><td class="num">4</td><td class="num">65.5</td></tr>
-      <tr><td>ST04</td><td class="num">32.3</td><td class="num">45.8</td><td class="num">29.4</td><td class="num">35.4</td><td class="num">142.9</td><td class="num">4</td><td class="num">35.7</td></tr>
-      <tr><td>ST05</td><td class="num">54.1</td><td class="num">39.8</td><td class="num">45.9</td><td class="num">44.7</td><td class="num">184.5</td><td class="num">4</td><td class="num">46.1</td></tr>
-      <tr><td>ST06</td><td class="num">50.1</td><td class="num">45.5</td><td class="num">47.4</td><td class="num">41.8</td><td class="num">184.8</td><td class="num">4</td><td class="num">46.2</td></tr>
-      <tr><td>ST07</td><td class="num">100.1</td><td class="num">80.5</td><td class="num">37.6</td><td class="num">61.9</td><td class="num">280.1</td><td class="num">4</td><td class="num">70.0</td></tr>
-      <tr class="hl"><td>ST08</td><td class="num">79.2</td><td class="num">71.7</td><td class="num"><b>119.3</b></td><td class="num">54.4</td><td class="num">324.6</td><td class="num">4</td><td class="num"><b>81.2</b></td></tr>
-      <tr><td>ST09</td><td class="num">44.4</td><td class="num">32.5</td><td class="num">37.6</td><td class="num">6.8</td><td class="num">121.3</td><td class="num">4</td><td class="num">30.3</td></tr>
+      <tr><td>ST01</td><td class="num">79.8</td><td class="num">64.1</td><td class="num">68.5</td><td class="num">43.8</td><td class="num">256.2</td><td class="num">64.1</td><td class="num">19.8</td><td class="num">92.8%</td></tr>
+      <tr><td>ST02</td><td class="num">44.5</td><td class="num">53.1</td><td class="num">62.6</td><td class="num">42.4</td><td class="num">202.6</td><td class="num">50.7</td><td class="num">19.1</td><td class="num">91.4%</td></tr>
+      <tr><td>ST03</td><td class="num">66.3</td><td class="num">89.3</td><td class="num">60.6</td><td class="num">45.6</td><td class="num">261.8</td><td class="num">65.5</td><td class="num">19.8</td><td class="num">93.0%</td></tr>
+      <tr><td>ST04</td><td class="num">32.3</td><td class="num">45.8</td><td class="num">29.4</td><td class="num">35.4</td><td class="num">142.9</td><td class="num">35.7</td><td class="num">17.7</td><td class="num">89.0%</td></tr>
+      <tr><td>ST05</td><td class="num">54.1</td><td class="num">39.8</td><td class="num">45.9</td><td class="num">44.7</td><td class="num">184.5</td><td class="num">46.1</td><td class="num">150.3</td><td class="num">55.1%</td></tr>
+      <tr><td>ST06</td><td class="num">50.1</td><td class="num">45.5</td><td class="num">47.4</td><td class="num">41.8</td><td class="num">184.8</td><td class="num">46.2</td><td class="num">151.0</td><td class="num">55.0%</td></tr>
+      <tr><td>ST07</td><td class="num">100.1</td><td class="num">80.5</td><td class="num">37.6</td><td class="num">61.9</td><td class="num">280.1</td><td class="num">70.0</td><td class="num">193.6</td><td class="num">59.1%</td></tr>
+      <tr class="hl"><td>ST08</td><td class="num">79.2</td><td class="num">71.7</td><td class="num"><b>119.3</b></td><td class="num">54.4</td><td class="num">324.6</td><td class="num"><b>81.2</b></td><td class="num">328.8</td><td class="num">49.7%</td></tr>
+      <tr><td>ST09</td><td class="num">44.4</td><td class="num">32.5</td><td class="num">37.6</td><td class="num">6.8</td><td class="num">121.3</td><td class="num">30.3</td><td class="num">594.6</td><td class="num">16.9%</td></tr>
     </tbody>
   </table></div>
-  <div class="note"><p><b>從這張表看得出：</b>ST08 的 P03 花了 119.3 秒，比其他三件多 40–65 秒，平均是被這一件拉高的；ST09 的 P04 只有 6.8 秒，可能是掃碼太快或漏做。把第 39 行的 <code>statistics.fmean</code> 改成 <code>statistics.median</code>，就會改用中位數。</p></div>
+  <div class="note"><p><b>從這張表看得出：</b>越後面的工站等待越久（ST09 等了 594.6 秒、稼動率只有 16.9%），因為前面 ST07、ST08 慢，半成品送不過來。ST08 的 P03 花了 119.3 秒，比其他三件多 40～65 秒，平均是被這一件拉高的。</p></div>
 </section>
 
 <section id="loop">
   <h2><span class="n">06</span>每 5 秒的流程</h2>
 <pre class="mermaid">
 flowchart TB
-  S["按「開始模擬」"] --> R["讀取 event 表全部資料<br/>（每頁 1000 筆，分頁讀完）"]
-  R --> C{"筆數或最晚完工時間<br/>跟上次一樣？"}
+  S["按「開始模擬」"] --> R["讀取 event、station_flow、<br/>目前場次（只讀）"]
+  R --> C{"筆數、最晚完工時間、<br/>流程、目前場次<br/>都跟上次一樣？"}
   C -->|一樣| N["不計算<br/>只更新「最後檢查」"]
   C -->|不一樣| K["compute()：分組、算指標<br/>執行次數 +1，存結果"]
   N --> W["等到滿 5 秒"]
@@ -272,119 +278,96 @@ flowchart TB
   <div class="tbl"><table>
     <thead><tr><th>檔案</th><th>行數</th><th>做什麼</th></tr></thead>
     <tbody>
-      <tr><td><code>backend/simulation.py</code></td><td class="num">100</td><td><b>演算法本體</b>：分組、算指標。改模擬只改這裡</td></tr>
-      <tr><td><code>backend/main.py</code></td><td class="num">246</td><td>FastAPI：開始／暫停／繼續／停止 API 和 5 秒迴圈</td></tr>
-      <tr><td><code>backend/database.py</code></td><td class="num">151</td><td>讀寫 Supabase；三種模式（完整、唯讀、記憶體）</td></tr>
-      <tr><td><code>backend/excel_loader.py</code></td><td class="num">43</td><td>讀老師的 Excel（沒接資料庫時用）</td></tr>
-      <tr><td><code>backend/build_static.py</code></td><td class="num">49</td><td>GitHub Actions 版：讀 Excel 產生靜態結果</td></tr>
-      <tr><td><code>backend/backup_supabase.py</code></td><td class="num">118</td><td>備份資料庫成 Excel／CSV／JSON</td></tr>
-      <tr><td><code>frontend/app.js</code></td><td class="num">243</td><td>網頁邏輯：呼叫 API、組別與批次篩選、畫表格</td></tr>
-      <tr><td><code>frontend/config.js</code></td><td class="num">18</td><td>設定：連哪個 API、哪個資料庫</td></tr>
+      <tr><td><code>backend/simulation.py</code></td><td class="num">267</td><td><b>演算法本體</b>：場次、流程、終點站、各項指標。改模擬只改這裡</td></tr>
+      <tr><td><code>backend/main.py</code></td><td class="num">280</td><td>FastAPI：開始／暫停／繼續／停止 API、5 秒迴圈、後端首頁</td></tr>
+      <tr><td><code>backend/database.py</code></td><td class="num">178</td><td>讀 Supabase（event、station_flow、目前場次）；只讀</td></tr>
+      <tr><td><code>backend/home_page.py</code></td><td class="num">106</td><td>後端首頁畫面</td></tr>
+      <tr><td><code>backend/verify_formulas.py</code></td><td class="num">305</td><td>公式驗證：人工驗算、pandas 獨立重算、老師算法比對</td></tr>
+      <tr><td><code>backend/verify_teacher.js</code></td><td class="num">124</td><td>照抄老師監控中心的統計算法（JavaScript）</td></tr>
+      <tr><td><code>backend/build_verify_excel.py</code></td><td class="num">208</td><td>產生 Excel 公式驗證表</td></tr>
+      <tr><td><code>frontend/app.js</code></td><td class="num">466</td><td>網頁：呼叫 API、組別與場次篩選、表格、各工站明細</td></tr>
+      <tr><td><code>frontend/config.js</code></td><td class="num">24</td><td>設定：後端網址、資料庫、老師系統網址</td></tr>
     </tbody>
   </table></div>
 
-  <h3>① 決定批次</h3>
-  <div class="file"><b>simulation.py</b> batch_of()</div>
-<pre><code><span class="kw">def</span> batch_of(product_id: str) -> str:
-    <span class="st">"""TEST1-P01 → TEST1；P01（正式）→ FORMAL"""</span>
-    p = str(product_id <span class="kw">or</span> <span class="st">""</span>)
-    <span class="kw">return</span> p.split(<span class="st">"-"</span>)[0] <span class="kw">if</span> <span class="st">"-"</span> <span class="kw">in</span> p <span class="kw">else</span> <span class="st">"FORMAL"</span></code></pre>
+  <h3>① 判斷場次（第 48–58 行）</h3>
+<pre><code><span class="kw">def</span> round_of(product_id: str) -> str:
+    s = str(product_id <span class="kw">or</span> <span class="st">""</span>).strip().upper()
+    m = re.match(<span class="st">r"^TEST(\d+)-"</span>, s)
+    <span class="kw">if</span> m:
+        <span class="kw">return</span> <span class="st">f"TEST{int(m.group(1))}"</span>   <span class="cm"># TEST2-P01 → TEST2</span>
+    <span class="kw">if</span> s.startswith(<span class="st">"TEST"</span>):
+        <span class="kw">return</span> <span class="st">"TEST1"</span>                     <span class="cm"># 舊版 TEST-P01 → 第 1 次測試</span>
+    <span class="kw">return</span> <span class="st">"FORMAL"</span>                        <span class="cm"># P01 → 正式實作</span></code></pre>
 
-  <h3>② 分組並對每條線計算</h3>
-  <div class="file"><b>simulation.py</b> compute()</div>
-<pre><code><span class="kw">def</span> compute(tick: int, events: list[dict]) -> tuple[str, dict]:
-    rows = [e <span class="kw">for</span> e <span class="kw">in</span> events <span class="kw">if</span> (e.get(<span class="st">"status"</span>) <span class="kw">or</span> <span class="st">"COMPLETED"</span>) == <span class="st">"COMPLETED"</span>]
+  <h3>② 找流程與終點站（第 84–108 行）</h3>
+<pre><code><span class="kw">def</span> flow_for(flows_by_key, group, rnd):
+    <span class="cm"># 本場 → 前面幾場 → 組別（同老師 timer.html、監控中心的候選順序）</span>
+    keys = [<span class="st">f"{group}-T{r}"</span> <span class="kw">for</span> r <span class="kw">in</span> range(n, 0, -1)] + [group]
+    <span class="kw">for</span> k <span class="kw">in</span> keys:
+        <span class="kw">if</span> flows_by_key.get(k):
+            <span class="kw">return</span> k, flows_by_key[k]
 
-    <span class="cm"># 依「組別 + 批次」分組</span>
-    grouped = defaultdict(list)
-    <span class="kw">for</span> r <span class="kw">in</span> rows:
-        grouped[(r[<span class="st">"group_id"</span>], batch_of(r[<span class="st">"product_id"</span>]))].append(r)
+<span class="kw">def</span> terminal_station(edges):
+    <span class="cm"># 沒有任何「往下一站」連線的工站；有好幾個時取編號最大</span>
+    nodes = {a <span class="kw">for</span> a, _ <span class="kw">in</span> edges} | {b <span class="kw">for</span> _, b <span class="kw">in</span> edges <span class="kw">if</span> b}
+    terminals = sorted(st <span class="kw">for</span> st <span class="kw">in</span> nodes <span class="kw">if not</span> any(a == st <span class="kw">and</span> b <span class="kw">for</span> a, b <span class="kw">in</span> edges))
+    <span class="kw">return</span> terminals[-1] <span class="kw">if</span> terminals <span class="kw">else None</span></code></pre>
 
-    <span class="cm"># 整條線的最後一站（例如 ST09）</span>
-    all_stations = sorted({r[<span class="st">"station_id"</span>] <span class="kw">for</span> r <span class="kw">in</span> rows})
-    final_station = all_stations[-1]
+  <h3>③ 各工站：作業、等待、平均 CT（第 130–152 行）</h3>
+<pre><code><span class="kw">for</span> st <span class="kw">in</span> stations:
+    evs = sorted(by_station[st], key=<span class="kw">lambda</span> r: str(r.get(<span class="st">"start_time"</span>)))
+    run = sum((_dec(r.get(<span class="st">"duration_sec"</span>)) <span class="kw">for</span> r <span class="kw">in</span> evs), Decimal(0))   <span class="cm"># 十進位精確加總</span>
+    wait = Decimal(0)
+    <span class="kw">for</span> i, r <span class="kw">in</span> enumerate(evs):
+        cur = _dt(r.get(<span class="st">"start_time"</span>))
+        prev = line_start <span class="kw">if</span> i == 0 <span class="kw">else</span> _dt(evs[i - 1].get(<span class="st">"finish_time"</span>))
+        gap = (cur - prev).total_seconds()
+        <span class="kw">if</span> 0 &lt; gap &lt; MAX_GAP_SEC:          <span class="cm"># 0~600 秒才算等待（同老師）</span>
+            wait += gap
+    exact_avg[st] = run / n                     <span class="cm"># 未四捨五入，給瓶頸、平衡率用</span>
+    st_stats[st] = {<span class="st">"avg_ct"</span>: r1(exact_avg[st]),
+                    <span class="st">"util_pct"</span>: r1(run / (run + wait) * 100), ...}</code></pre>
 
-    lines = [{<span class="st">"group_id"</span>: g, <span class="st">"batch"</span>: b, **analyze_line(rs, final_station)}
-             <span class="kw">for</span> (g, b), rs <span class="kw">in</span> sorted(grouped.items())]
-    best = max(lines, key=<span class="kw">lambda</span> ln: (ln[<span class="st">"throughput_per_hr"</span>], ln[<span class="st">"finished"</span>]))
-    ...
-    <span class="kw">return</span> message, data      <span class="cm"># message = 網頁上的一行字；data = 表格用的數字</span></code></pre>
+  <h3>④ 瓶頸、平衡率、產出、節拍時間（第 156–172 行）</h3>
+<pre><code>bottleneck = max(stations, key=<span class="kw">lambda</span> st: exact_avg[st])     <span class="cm"># 平均 CT 最大</span>
+balance = sum(exact_avg.values()) / (len(exact_avg) * max_exact)
 
-  <h3>③ 單一產線的指標</h3>
-  <div class="file"><b>simulation.py</b> analyze_line()</div>
-<pre><code><span class="kw">def</span> analyze_line(rows, final_station):
-    <span class="cm"># 依工站收集作業秒數</span>
-    by_station = defaultdict(list)
-    <span class="kw">for</span> r <span class="kw">in</span> rows:
-        <span class="kw">if</span> r.get(<span class="st">"duration_sec"</span>) <span class="kw">is not None</span>:
-            by_station[r[<span class="st">"station_id"</span>]].append(float(r[<span class="st">"duration_sec"</span>]))
-    stations = sorted(by_station)
-    avg_ct = {s: round(statistics.fmean(v), 1) <span class="kw">for</span> s, v <span class="kw">in</span> by_station.items()}
+final = terminal_station(edges) <span class="kw">or</span> stations[-1]            <span class="cm"># 沒有流程 → 最後一站</span>
+<span class="kw">if</span> final <span class="kw">in</span> by_station:  output_station, reached = final, <span class="kw">True</span>
+<span class="kw">else</span>:                     output_station, reached = stations[-1], <span class="kw">False</span>   <span class="cm"># 未到終點，試算</span>
+output_sets = len(by_station[output_station])
 
-    <span class="cm"># 開工 / 完成的產品（集合 = 不重複計算）</span>
-    started  = {r[<span class="st">"product_id"</span>] <span class="kw">for</span> r <span class="kw">in</span> rows <span class="kw">if</span> r[<span class="st">"station_id"</span>] == stations[0]}
-    finished = {r[<span class="st">"product_id"</span>] <span class="kw">for</span> r <span class="kw">in</span> rows <span class="kw">if</span> r[<span class="st">"station_id"</span>] == final_station}
+total_sec = (max(ends_all) - min(starts_all)).total_seconds()
+takt = total_sec / output_sets                                  <span class="cm"># 節拍時間</span></code></pre>
 
-    elapsed = (max(完工時間) - min(開工時間)).total_seconds()
+  <h3>⑤ 每 5 秒的迴圈（main.py）</h3>
+<pre><code>events, flows, modes = <span class="kw">await</span> asyncio.gather(
+    store.fetch_events(EVENT_TABLE), store.fetch_flows(), store.fetch_modes())
+<span class="cm"># 指紋：event 筆數、最晚完工時間、流程、目前場次——任何一個變了就重算</span>
+sig = (len(events), 最晚完工時間, 流程, 目前場次)
+<span class="kw">if</span> sig != last_sig:
+    message, data = compute(tick, events, flows, modes)</code></pre>
 
-    bottleneck = max(avg_ct, key=avg_ct.get)            <span class="cm"># 平均 CT 最大的站</span>
-    max_ct = avg_ct[bottleneck]
-    balance = sum(avg_ct.values()) / (len(avg_ct) * max_ct)
-
-    <span class="kw">return</span> {
-        <span class="st">"avg_ct"</span>: avg_ct, <span class="st">"bottleneck"</span>: bottleneck, <span class="st">"bottleneck_ct"</span>: max_ct,
-        <span class="st">"balance_pct"</span>: round(balance * 100, 1),
-        <span class="st">"finished"</span>: len(finished),
-        <span class="st">"wip"</span>: max(len(started) - len(finished), 0),
-        <span class="st">"throughput_per_hr"</span>: round(len(finished) / elapsed * 3600, 1),
-        ...
-    }</code></pre>
-
-  <h3>④ 每 5 秒的迴圈與新資料偵測</h3>
-  <div class="file"><b>main.py</b> run_loop()（節錄）</div>
-<pre><code><span class="kw">while True</span>:
-    events = <span class="kw">await</span> store.fetch_events(EVENT_TABLE)
-    <span class="cm"># 「指紋」：筆數 + 最晚完工時間；有人掃碼就會改變</span>
-    sig = (len(events), max(str(e.get(<span class="st">"finish_time"</span>)) <span class="kw">for</span> e <span class="kw">in</span> events))
-    <span class="kw">if</span> sig == last_sig <span class="kw">and</span> ONLY_ON_NEW_DATA:
-        <span class="kw">await</span> store.save_status(last_check=<span class="st">"…沒有新資料"</span>)       <span class="cm"># 不重算</span>
-    <span class="kw">else</span>:
-        last_sig = sig
-        tick += 1
-        message, data = compute(tick, events)                     <span class="cm"># 呼叫演算法</span>
-        <span class="kw">await</span> store.add_result({<span class="st">"tick"</span>: tick, <span class="st">"message"</span>: message, <span class="st">"data"</span>: data})
-    <span class="kw">await</span> asyncio.sleep(INTERVAL - 已花的時間)                     <span class="cm"># 湊滿 5 秒</span></code></pre>
-
-  <h3>⑤ 讀資料庫（分頁）與三種模式</h3>
-  <div class="file"><b>database.py</b></div>
-<pre><code><span class="cm"># Supabase 一次最多回 1000 筆，分頁讀完</span>
-<span class="kw">async def</span> fetch_events(self, table, limit=20000):
-    rows = []
-    <span class="kw">while</span> len(rows) &lt; limit:
-        page = <span class="kw">await</span> self._get(table, {<span class="st">"order"</span>: <span class="st">"finish_time.asc"</span>, <span class="st">"limit"</span>: 1000, <span class="st">"offset"</span>: len(rows)})
-        rows += page
-        <span class="kw">if</span> len(page) &lt; 1000: <span class="kw">break</span>
-    <span class="kw">return</span> rows
-
-<span class="kw">def</span> make_store():
-    <span class="kw">if</span> url <span class="kw">and</span> secret:      <span class="kw">return</span> SupabaseStore(...)        <span class="cm"># 完整：結果寫回資料庫</span>
-    <span class="kw">if</span> url <span class="kw">and</span> publishable: <span class="kw">return</span> ReadOnlyEventsStore(...)   <span class="cm"># 唯讀：目前使用中</span>
-    <span class="kw">return</span> MemoryStore()                                   <span class="cm"># 記憶體：用 Excel 重播</span></code></pre>
-
-  <h3>⑥ 網頁的組別與批次篩選</h3>
-  <div class="file"><b>app.js</b> renderView()（節錄）</div>
+  <h3>⑥ 網頁的組別與場次篩選（app.js）</h3>
 <pre><code><span class="cm">// Python 算好全部組別；網頁只做篩選，所以每個人可以各看各的</span>
-<span class="kw">const</span> lines = d.lines.filter((l) =>
-  (selected === <span class="st">"ALL"</span> || l.group_id === selected) &amp;&amp;
-  (selBatch === <span class="st">"ALL"</span> || l.batch === selBatch));
-
-<span class="cm">// 排名：選了批次 → 只跟同批次的組比</span>
-<span class="kw">const</span> pool = d.lines.filter((l) => selBatch === <span class="st">"ALL"</span> || l.batch === selBatch);
-<span class="kw">const</span> ranked = [...pool].sort((a, b) => b.throughput_per_hr - a.throughput_per_hr);</code></pre>
+<span class="kw">const</span> lines = d.lines.filter((l) => (allG || l.group_id === selected) &amp;&amp; matchBatch(l));
+<span class="cm">// 排名：節拍時間越短越好；選了場次 → 只跟同一場次的各組比</span>
+<span class="kw">const</span> ranked = d.lines.filter(matchBatch).filter(rankable).sort((a, b) => a.takt_sec - b.takt_sec);</code></pre>
 </section>
 
 <section id="next">
-  <h2><span class="n">08</span>限制與下一步</h2>
+  <h2><span class="n">08</span>公式驗證、限制與下一步</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>驗證方法</th><th>資料</th><th>結果</th></tr></thead>
+    <tbody>
+      <tr><td>A 人工驗算（自己設計、答案可手算的小例子）</td><td>5 組特殊情況</td><td>39 / 39 一致</td></tr>
+      <tr><td>B pandas 獨立重算（不共用 simulation.py）</td><td>甲班 313 筆、測試 223 筆</td><td>826 / 826 一致</td></tr>
+      <tr><td>C 老師監控中心的 JavaScript 算法</td><td>同上</td><td>736 / 736 一致</td></tr>
+      <tr><td>D Excel 公式重算（公式驗證_甲班.xlsx）</td><td>甲班 313 筆</td><td>379 / 379 一致</td></tr>
+    </tbody>
+  </table></div>
+  <p>執行 <code>python verify_formulas.py</code> 可以隨時重新驗證。驗證過程中找到並修正了兩個錯誤：瓶頸站在四捨五入後同分時選錯站、等待時間加總時四捨五入誤差累積。</p>
   <div class="tbl"><table>
     <thead><tr><th>限制</th><th>影響</th><th>可以怎麼改</th></tr></thead>
     <tbody>
@@ -410,9 +393,10 @@ flowchart TB
 
 <script>
 (function(){
-  // G23 TEST1 的實際各站平均作業秒數（測試資料庫）
-  var data=[["ST01",64.0],["ST02",50.6],["ST03",65.5],["ST04",35.7],["ST05",46.1],["ST06",46.2],["ST07",70.0],["ST08",81.2],["ST09",30.3]];
+  // G23 第 1 次測試的各站平均作業秒數（未四捨五入，測試資料庫）
+  var data=[["ST01",64.05],["ST02",50.65],["ST03",65.45],["ST04",35.725],["ST05",46.125],["ST06",46.2],["ST07",70.025],["ST08",81.15],["ST09",30.325]];
   var W=640,H=270,L=44,R=12,T=20,B=34,max=90;
+  var r1=function(v){return (Math.round(v*10+1e-9)/10).toFixed(1)}; // 四捨五入（同 Python：64.05 → 64.1）
   var avg=data.reduce(function(a,d){return a+d[1]},0)/data.length;
   var bn=data.reduce(function(a,d){return d[1]>a[1]?d:a});
   var iw=W-L-R, ih=H-T-B, slot=iw/data.length, bw=slot*0.62;
@@ -426,7 +410,7 @@ flowchart TB
   data.forEach(function(d,i){
     var x=L+i*slot+(slot-bw)/2, isB=d[0]===bn[0];
     s+='<rect x="'+x.toFixed(1)+'" y="'+y(d[1]).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+(T+ih-y(d[1])).toFixed(1)+'" rx="3" fill="'+(isB?'var(--amber)':'var(--steel)')+'" opacity="'+(isB?1:0.78)+'"/>';
-    s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y(d[1])-6).toFixed(1)+'" text-anchor="middle" fill="var(--ink)" font-weight="'+(isB?700:400)+'">'+d[1].toFixed(1)+'</text>';
+    s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y(d[1])-6).toFixed(1)+'" text-anchor="middle" fill="var(--ink)" font-weight="'+(isB?700:400)+'">'+r1(d[1])+'</text>';
     s+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" fill="var(--muted)">'+d[0]+'</text>';
   });
   s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(avg)+'" y2="'+y(avg)+'" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="5 4"/>';
