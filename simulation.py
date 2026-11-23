@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import re
-import statistics
+from decimal import ROUND_HALF_UP, Decimal
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -26,6 +26,15 @@ TW = timezone(timedelta(hours=8))
 ROUND_ORDER = [f"TEST{i}" for i in range(1, 11)] + ["FORMAL"]
 MAX_GAP_SEC = 600  # 同老師：超過 10 分鐘的空檔不算等待（視為休息或換場）
 LONG_SPAN_SEC = 3 * 3600  # 一個場次的資料跨越超過 3 小時 → 多半混了不同天的上課資料，提醒使用者
+
+
+def r1(x) -> float:
+    """四捨五入到小數 1 位（用十進位精確計算，跟手算一致：81.15 → 81.2）"""
+    return float(Decimal(str(x)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
+def _dec(v) -> Decimal:
+    return Decimal(str(v)) if v is not None and v != "" else Decimal(0)
 
 
 def _dt(v) -> datetime | None:
@@ -117,32 +126,37 @@ def analyze_line(rows: list[dict], edges: list[tuple[str, str]]) -> dict:
         by_station[(r.get("station_id") or "(未知)").strip()].append(r)
     stations = sorted(by_station)
     st_stats: dict[str, dict] = {}
+    exact_avg: dict[str, Decimal] = {}   # 未四捨五入的平均 CT（瓶頸、平衡率用這個算，避免四捨五入後同分）
+    exact_wait: dict[str, Decimal] = {}  # 未四捨五入的等待時間（加總時用這個，避免誤差累積）
     for st in stations:
         evs = sorted(by_station[st], key=lambda r: str(r.get("start_time")))
-        run = sum(float(r.get("duration_sec") or 0) for r in evs)
-        wait = 0.0
+        run = sum((_dec(r.get("duration_sec")) for r in evs), Decimal(0))   # 十進位精確加總
+        wait = Decimal(0)
         for i, r in enumerate(evs):
             cur = _dt(r.get("start_time"))
             prev = line_start if i == 0 else _dt(evs[i - 1].get("finish_time"))
             if cur and prev:
-                gap = (cur - prev).total_seconds()
+                gap = Decimal(str((cur - prev).total_seconds()))
                 if 0 < gap < MAX_GAP_SEC:
                     wait += gap
         n = len(evs)
+        exact_avg[st] = run / n if n else Decimal(0)
+        exact_wait[st] = wait
         st_stats[st] = {
             "qty": n,
-            "run_sec": round(run, 1),
-            "avg_ct": round(run / n, 1) if n else 0,
-            "wait_sec": round(wait, 1),
-            "avg_wait": round(wait / n, 1) if n else 0,
-            "util_pct": round(run / (run + wait) * 100, 1) if run + wait > 0 else 0,
+            "run_sec": r1(run),
+            "avg_ct": r1(exact_avg[st]),
+            "wait_sec": r1(wait),
+            "avg_wait": r1(wait / n) if n else 0,
+            "util_pct": r1(run / (run + wait) * 100) if run + wait > 0 else 0,
         }
     avg_ct = {st: s["avg_ct"] for st, s in st_stats.items()}
 
-    # 2. 瓶頸站：平均 Cycle Time 最大
-    bottleneck = max(avg_ct, key=avg_ct.get) if avg_ct else None
-    max_ct = avg_ct.get(bottleneck, 0) if bottleneck else 0
-    balance = sum(avg_ct.values()) / (len(avg_ct) * max_ct) if max_ct else 0
+    # 2. 瓶頸站：平均 Cycle Time 最大（用未四捨五入的值比；同分取編號小的，同老師）
+    bottleneck = max(stations, key=lambda st: exact_avg[st]) if stations else None
+    max_exact = exact_avg.get(bottleneck, Decimal(0)) if bottleneck else Decimal(0)
+    max_ct = r1(max_exact)
+    balance = sum(exact_avg.values()) / (len(exact_avg) * max_exact) if max_exact else 0
 
     # 3. 產出：終點站的完工筆數（同老師）；終點站還沒完工時，暫用有完工的最後一站試算
     final = terminal_station(edges) or (stations[-1] if stations else None)
@@ -155,9 +169,10 @@ def analyze_line(rows: list[dict], edges: list[tuple[str, str]]) -> dict:
 
     # 4. 節拍時間 = 總耗時 ÷ 產出組數；穩態間隔 = 產出站「首件完工 → 末件完工」÷（組數 − 1）
     total_sec = (max(ends_all) - min(starts_all)).total_seconds() if starts_all and ends_all else 0
-    takt = round(total_sec / output_sets, 1) if output_sets and total_sec > 0 else None
+    takt_exact = Decimal(str(total_sec)) / output_sets if output_sets and total_sec > 0 else None
+    takt = r1(takt_exact) if takt_exact else None
     out_fin = sorted(d for d in (_dt(r.get("finish_time")) for r in output_evs) if d)
-    steady = round((out_fin[-1] - out_fin[0]).total_seconds() / (len(out_fin) - 1), 1) if len(out_fin) >= 2 else None
+    steady = r1(Decimal(str((out_fin[-1] - out_fin[0]).total_seconds())) / (len(out_fin) - 1)) if len(out_fin) >= 2 else None
 
     # 5. 在製品：起點站開工的產品數 − 終點站完成的產品數
     roots = [s for s in root_stations(edges) if s in by_station] or stations[:1]
@@ -171,19 +186,19 @@ def analyze_line(rows: list[dict], edges: list[tuple[str, str]]) -> dict:
         "avg_ct": avg_ct,
         "bottleneck": bottleneck,
         "bottleneck_ct": max_ct,
-        "balance_pct": round(balance * 100, 1),
+        "balance_pct": r1(balance * 100),
         "final_station": final,
         "output_station": output_station,
         "terminal_reached": reached,
         "output_sets": output_sets,
         "finished": output_sets if reached else 0,
         "wip": max(len(started) - len(finished), 0),
-        "total_sec": round(total_sec, 1),
-        "elapsed_min": round(total_sec / 60, 1),
+        "total_sec": r1(total_sec),
+        "elapsed_min": r1(Decimal(str(total_sec)) / 60),
         "takt_sec": takt,
         "steady_sec": steady,
-        "throughput_per_hr": round(3600 / takt, 1) if takt and reached else 0,
-        "wait_sec": round(sum(s["wait_sec"] for s in st_stats.values()), 1),
+        "throughput_per_hr": r1(Decimal(3600) / takt_exact) if takt_exact and reached else 0,
+        "wait_sec": r1(sum(exact_wait.values(), Decimal(0))),
         "long_span": total_sec > LONG_SPAN_SEC,  # 總耗時超過 3 小時：節拍時間可能被不同天的資料拉長
         "first_start": min(starts_all).isoformat() if starts_all else None,
         "last_finish": max(ends_all).isoformat() if ends_all else None,
