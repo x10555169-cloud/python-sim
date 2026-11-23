@@ -86,11 +86,11 @@ def part_a() -> None:
     L = {(l["group_id"], l["batch"]): l for l in d["lines"]}
 
     a1 = L[("GA", "TEST1")]
-    # 總耗時 = 最晚完工 59 − 最早開工 0 = 59 秒；終點 ST03 產出 2 組 → 節拍 59 ÷ 2 = 29.5
+    # 總耗時 = 最晚完工 59 − 最早開工 0 = 59 秒；終點 ST03 產出 2 組 → 產線 CT 59 ÷ 2 = 29.5
     check(P, "A1 總耗時", a1["total_sec"], 59.0)
     check(P, "A1 終點站", a1["final_station"], "ST03")
     check(P, "A1 產出組數", a1["output_sets"], 2)
-    check(P, "A1 節拍時間 59÷2", a1["takt_sec"], 29.5)
+    check(P, "A1 產線 Cycle Time 59÷2", a1["takt_sec"], 29.5)
     check(P, "A1 每小時產出 3600÷29.5", a1["throughput_per_hr"], 122.0)
     # 平均 CT：ST01 (10+8)/2=9、ST02 (20+22)/2=21、ST03 (5+7)/2=6 → 瓶頸 ST02 21
     check(P, "A1 ST01 平均 CT", a1["avg_ct"]["ST01"], 9.0)
@@ -116,7 +116,7 @@ def part_a() -> None:
     a2 = L[("GB", "TEST2")]
     check(P, "A2 沿用前一場流程 GB-T1", a2["flow_key"], "GB-T1")
     check(P, "A2 組裝線終點 ST03", a2["final_station"], "ST03")
-    check(P, "A2 節拍 25÷1", a2["takt_sec"], 25.0)
+    check(P, "A2 產線 CT 25÷1", a2["takt_sec"], 25.0)
     check(P, "A2 瓶頸 ST02 15", (a2["bottleneck"], a2["bottleneck_ct"]), ("ST02", 15.0))
     check(P, "A2 平衡率 35÷45", a2["balance_pct"], 77.8)
     check(P, "A2 ST03 等待 15−0", a2["station_stats"]["ST03"]["wait_sec"], 15.0)
@@ -124,7 +124,7 @@ def part_a() -> None:
     a3 = L[("GC", "TEST1")]
     check(P, "A3 終點站 ST03 未完工", a3["terminal_reached"], False)
     check(P, "A3 暫以 ST02 試算", (a3["output_station"], a3["output_sets"]), ("ST02", 1))
-    check(P, "A3 節拍 30÷1（試算）", a3["takt_sec"], 30.0)
+    check(P, "A3 產線 CT 30÷1（試算）", a3["takt_sec"], 30.0)
     check(P, "A3 未到終點 → 每小時產出 0、完成 0", (a3["throughput_per_hr"], a3["finished"]), (0, 0))
     check(P, "A3 在製品 1−0", a3["wip"], 1)
 
@@ -272,6 +272,10 @@ def part_b_c(db: str, dump: bool) -> None:
                 for f in ("qty", "avg_ct", "wait_sec", "util_pct"):
                     want = sv[f] if f == "qty" else float(sv[f])
                     check(P, f"{k} {st} {f}", a["station_stats"][st][f], want, ROUND_TOL if f != "qty" else 0)
+                # 佔產線 Cycle Time（整數 %，最多差 0.5）、差幾秒（小數 1 位，最多差 0.05）
+                if sv["pct_of_line"] is not None:
+                    check(P, f"{k} {st} 佔產線 Cycle Time %", a["station_stats"][st]["pct_of_line"], float(sv["pct_of_line"]), 0.5 + 1e-6)
+                    check(P, f"{k} {st} 與產線 Cycle Time 差秒", a["station_stats"][st]["vs_line_sec"], float(sv["vs_line_sec"]), ROUND_TOL)
     if dump:
         out = HERE.parent / "verify" / db
         out.mkdir(parents=True, exist_ok=True)

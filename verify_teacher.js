@@ -38,7 +38,7 @@ function resolveFlow(group, vr) {
   return [];
 }
 
-// showStats（每站統計 + 節拍時間），只拿掉畫面相關的程式
+// showStats（每站統計 + 產線 Cycle Time），只拿掉畫面相關的程式
 function showStats(data, group, vr) {
   const rows = data.filter((r) => (r.group_id || "").trim() === group && isEventInViewRound(r, vr));
   const allStartTimes = rows.map((r) => new Date(r.start_time).getTime()).filter((t) => !isNaN(t));
@@ -103,7 +103,10 @@ function showStats(data, group, vr) {
   stationKeys.forEach((st) => {
     const s = stats[st];
     const denom = s.runSum + s.waitSum;
-    station_stats[st] = { qty: s.qty, avg_ct: s.avgCycle, wait_sec: s.waitSum, util_pct: denom > 0 ? (s.runSum / denom) * 100 : 0 };
+    station_stats[st] = { qty: s.qty, avg_ct: s.avgCycle, wait_sec: s.waitSum, util_pct: denom > 0 ? (s.runSum / denom) * 100 : 0,
+      // 「與本次 Cycle Time 比較」欄：佔 Cycle Time %、差幾秒（老師 showStats 第 2959–2963 行）
+      pct_of_line: activityTaktSec ? (s.avgCycle / activityTaktSec) * 100 : null,
+      vs_line_sec: activityTaktSec ? s.avgCycle - activityTaktSec : null };
   });
   return {
     events: rows.length, final_station: finalStationId, output_station: outputSourceStation,

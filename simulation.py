@@ -11,7 +11,7 @@
 名詞（同老師的頁面）：
   場次      TEST1~TEST10 = 第 1~10 次測試；FORMAL = 正式實作
   Cycle Time 各站平均作業秒數
-  節拍時間   該場「首件開工 → 末件完工」總耗時 ÷ 終點站產出組數
+  產線 Cycle Time 該場總耗時 ÷ 終點站產出組數（平均產出間隔；老師監控中心橫幅稱為「節拍時間」）
   等待時間   站內上一件完工 → 下一件開工的空檔（第一件：產線開跑 → 本站開工），只計 0~600 秒
   稼動率     作業時間 ÷（作業時間 + 等待時間）
 """
@@ -167,7 +167,7 @@ def analyze_line(rows: list[dict], edges: list[tuple[str, str]]) -> dict:
     output_evs = by_station.get(output_station, []) if output_station else []
     output_sets = len(output_evs)
 
-    # 4. 節拍時間 = 總耗時 ÷ 產出組數；穩態間隔 = 產出站「首件完工 → 末件完工」÷（組數 − 1）
+    # 4. 產線 Cycle Time = 總耗時 ÷ 產出組數；穩態間隔 = 產出站「首件完工 → 末件完工」÷（組數 − 1）
     total_sec = (max(ends_all) - min(starts_all)).total_seconds() if starts_all and ends_all else 0
     takt_exact = Decimal(str(total_sec)) / output_sets if output_sets and total_sec > 0 else None
     takt = r1(takt_exact) if takt_exact else None
@@ -182,7 +182,7 @@ def analyze_line(rows: list[dict], edges: list[tuple[str, str]]) -> dict:
     return {
         "events": len(rows),
         "stations": stations,
-        "station_stats": st_stats,
+        "station_stats": {st: {**v, "pct_of_line": float((exact_avg[st] / takt_exact * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if takt_exact else None, "vs_line_sec": r1(exact_avg[st] - takt_exact) if takt_exact else None} for st, v in st_stats.items()},  # 佔產線 Cycle Time %、差幾秒（同老師）
         "avg_ct": avg_ct,
         "bottleneck": bottleneck,
         "bottleneck_ct": max_ct,
@@ -199,7 +199,7 @@ def analyze_line(rows: list[dict], edges: list[tuple[str, str]]) -> dict:
         "steady_sec": steady,
         "throughput_per_hr": r1(Decimal(3600) / takt_exact) if takt_exact and reached else 0,
         "wait_sec": r1(sum(exact_wait.values(), Decimal(0))),
-        "long_span": total_sec > LONG_SPAN_SEC,  # 總耗時超過 3 小時：節拍時間可能被不同天的資料拉長
+        "long_span": total_sec > LONG_SPAN_SEC,  # 總耗時超過 3 小時：產線 Cycle Time 可能被不同天的資料拉長
         "first_start": min(starts_all).isoformat() if starts_all else None,
         "last_finish": max(ends_all).isoformat() if ends_all else None,
     }
@@ -245,7 +245,7 @@ def compute(tick: int, events: list[dict], flows: list[dict] | None = None,
             **analyze_line(rs, edges),
         })
 
-    # 最佳：節拍時間最短（只比：已做到終點站、至少 2 個工站、沒有跨天資料的場次）
+    # 最佳：產線 Cycle Time 最短（只比：已做到終點站、至少 2 個工站、沒有跨天資料的場次）
     done = [ln for ln in lines if ln["terminal_reached"] and ln["takt_sec"]
             and len(ln["stations"]) >= 2 and not ln["long_span"]]
     best = min(done, key=lambda ln: ln["takt_sec"]) if done else None
@@ -262,6 +262,6 @@ def compute(tick: int, events: list[dict], flows: list[dict] | None = None,
     }
     msg = f"[{now}] Python 第 {tick} 次執行：讀到 {len(rows)} 筆事件、{data['groups']} 組、{len(lines)} 個場次"
     if best:
-        msg += (f"；節拍時間最短為 {best['group_id']} {best['round_label']} 每組 {best['takt_sec']} 秒"
+        msg += (f"；產線 Cycle Time 最短為 {best['group_id']} {best['round_label']} 每組 {best['takt_sec']} 秒"
                 f"（瓶頸站 {best['bottleneck']}，平均 {best['bottleneck_ct']} 秒）")
     return msg, data

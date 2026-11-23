@@ -125,7 +125,7 @@
   $("groupSel").onchange = onFilterChange;
   $("batchSel").onchange = onFilterChange;
 
-  // ---------- 分析表格（算法同老師的監控中心：節拍時間 = 總耗時 ÷ 終點站產出組數） ----------
+  // ---------- 分析表格（算法同老師的監控中心：產線 Cycle Time = 總耗時 ÷ 終點站產出組數；老師橫幅稱為「節拍時間」） ----------
   const fmtSec = (v) => (v == null ? "—" : v >= 3600 ? `${(v / 3600).toFixed(1)} 小時` : v >= 60 ? `${(v / 60).toFixed(1)} 分` : `${v} 秒`);
   const rankable = (l) => l.terminal_reached && l.takt_sec && l.stations.length >= 2 && !l.long_span;
 
@@ -138,7 +138,7 @@
   }
 
   function renderLines(lines, st, emptyText) {
-    const head = ["組別", "場次", "流程", "完成組數", "總耗時", "節拍時間（秒/組）", "瓶頸站", "平衡率", "等待合計", "在製品", ...st.map((x) => `${x} CT`)];
+    const head = ["組別", "場次", "流程", "完成組數", "總耗時", "產線 Cycle Time（秒/組）", "瓶頸站", "平衡率", "等待合計", "在製品", ...st.map((x) => `${x} CT`)];
     const body = lines.length ? lines.map((l) => {
       const cells = st.map((s) => `<td class="${s === l.bottleneck ? "bn" : ""}">${l.avg_ct[s] ?? "—"}</td>`).join("");
       const flow = l.flow && l.flow.length ? esc(l.flow.join("、")) : '<span class="muted" title="老師的系統裡沒有這場的流程設定，用有資料的最後一站當終點">未設定</span>';
@@ -157,11 +157,11 @@
     $("stationTitle").textContent = `${line.group_id} ${batchLabel(line.batch)} 各工站明細`;
     const rows = Object.entries(line.station_stats).map(([st, s]) =>
       `<tr class="${st === line.bottleneck ? "hl" : ""}"><td>${esc(st)}${st === line.bottleneck ? ' <span class="tag fail">瓶頸</span>' : ""}${st === line.final_station ? ' <span class="tag sel">終點</span>' : ""}</td>`
-      + `<td>${s.qty}</td><td>${s.avg_ct}</td><td>${line.takt_sec ? Math.round(s.avg_ct / line.takt_sec * 100) + "%" : "—"}</td>`
+      + `<td>${s.qty}</td><td>${s.avg_ct}</td><td>${s.pct_of_line != null ? `${s.pct_of_line}%（${s.vs_line_sec > 0 ? "+" : ""}${s.vs_line_sec.toFixed(1)}s）` : "—"}</td>`
       + `<td>${s.run_sec}</td><td>${s.avg_wait}</td><td>${s.wait_sec}</td><td>${s.util_pct}%</td></tr>`).join("");
-    $("stationTable").innerHTML = `<thead><tr><th>工站</th><th>筆數</th><th>平均 Cycle Time（秒）</th><th>佔節拍時間</th>`
+    $("stationTable").innerHTML = `<thead><tr><th>工站</th><th>筆數</th><th>工站平均 CT（秒）</th><th>佔產線 Cycle Time</th>`
       + `<th>總作業時間（秒）</th><th>平均等待（秒）</th><th>總等待（秒）</th><th>稼動率</th></tr></thead><tbody>${rows}</tbody>`;
-    $("stationNote").textContent = `節拍時間 ${line.takt_sec ?? "—"} 秒/組 = 總耗時 ${line.total_sec} 秒 ÷ ${line.output_station} 產出 ${line.output_sets} 組`
+    $("stationNote").textContent = `產線 Cycle Time ${line.takt_sec ?? "—"} 秒/組 = 總耗時 ${line.total_sec} 秒 ÷ ${line.output_station} 產出 ${line.output_sets} 組`
       + (line.steady_sec ? `；排除首件暖線的穩態產出間隔 ${line.steady_sec} 秒/組` : "");
   }
 
@@ -201,14 +201,14 @@
     const lines = d.lines.filter((l) => (allG || l.group_id === selected) && matchBatch(l));
     const t = new Date(top.created_at || Date.now()).toLocaleTimeString("zh-TW", { hour12: false, timeZone: "Asia/Taipei" });
     const sum = (k) => lines.reduce((a, l) => a + (l[k] || 0), 0);
-    // 排名：節拍時間越短越好；選了場次 → 跟同一場次的各組比
+    // 排名：產線 Cycle Time 越短越好；選了場次 → 跟同一場次的各組比
     const ranked = d.lines.filter(matchBatch).filter(rankable).sort((a, b) => a.takt_sec - b.takt_sec);
     const rankOf = (l) => (ranked.includes(l) ? `${ranked.indexOf(l) + 1}/${ranked.length}` : "不列入排名");
     const avgBal = lines.length ? (sum("balance_pct") / lines.length).toFixed(1) : "—";
 
     const u = new URL(location.href);
     $("groupInfo").textContent = oldBackend
-      ? "⚠ 後端（Render）還是舊版，流程、等待時間、各工站明細暫時看不到；節拍時間由舊資料換算。請確認 GitHub 上有 home_page.py，且 Render 部署成功。"
+      ? "⚠ 後端（Render）還是舊版，流程、等待時間、各工站明細暫時看不到；產線 Cycle Time 由舊資料換算。請確認 GitHub 上有 home_page.py，且 Render 部署成功。"
       : scope ? `分享這個畫面：${u.origin}${u.pathname}${u.search}` : `共 ${d.groups} 組、${d.lines.length} 個場次有資料`;
 
     if (!lines.length) {
@@ -218,23 +218,23 @@
       $("latest").textContent = top.message;
       const b = d.best;
       $("latestStats").innerHTML = tilesHtml([["事件筆數", d.events], ["組數", d.groups], ["場次數", d.lines.length],
-        ["節拍時間最短", b ? `${b.group_id} ${batchLabel(b.batch)}（${b.takt_sec} 秒/組）` : "—"], ["平均平衡率", `${avgBal}%`]]);
+        ["產線 Cycle Time 最短", b ? `${b.group_id} ${batchLabel(b.batch)}（${b.takt_sec} 秒/組）` : "—"], ["平均平衡率", `${avgBal}%`]]);
     } else if (allG) {
       const best = ranked[0];
       $("latest").textContent = `[${t}] ${batchLabel(selBatch)}：共 ${lines.length} 組有資料`
-        + (best ? `，節拍時間最短 ${best.group_id}（每組 ${best.takt_sec} 秒，瓶頸 ${best.bottleneck}）` : "") + `，平均平衡率 ${avgBal}%`;
+        + (best ? `，產線 Cycle Time 最短 ${best.group_id}（每組 ${best.takt_sec} 秒，瓶頸 ${best.bottleneck}）` : "") + `，平均平衡率 ${avgBal}%`;
       $("latestStats").innerHTML = tilesHtml([["事件筆數", sum("events")], ["組數", lines.length], ["完成組數", sum("output_sets")],
-        ["節拍時間最短", best ? `${best.group_id}（${best.takt_sec} 秒/組）` : "—"], ["平均平衡率", `${avgBal}%`]]);
+        ["產線 Cycle Time 最短", best ? `${best.group_id}（${best.takt_sec} 秒/組）` : "—"], ["平均平衡率", `${avgBal}%`]]);
     } else {
       // 單一組別：逐場比較（改流程後有沒有變好）
       const cur = d.current_rounds?.[selected] || d.system_round;
-      const parts = lines.map((l) => `${batchLabel(l.batch)} 節拍 ${l.takt_sec ?? "—"} 秒/組（完成 ${l.output_sets} 組、瓶頸 ${l.bottleneck}、排名 ${rankOf(l)}）`);
+      const parts = lines.map((l) => `${batchLabel(l.batch)} 產線 Cycle Time ${l.takt_sec ?? "—"} 秒/組（完成 ${l.output_sets} 組、瓶頸 ${l.bottleneck}、排名 ${rankOf(l)}）`);
       $("latest").textContent = `[${t}] ${selected}：${parts.join("；")}`;
       const valid = lines.filter(rankable);
       const bestMine = valid.length ? valid.reduce((a, l) => (l.takt_sec < a.takt_sec ? l : a)) : null;
       const worst = lines.reduce((a, l) => (l.bottleneck_ct > a.bottleneck_ct ? l : a));
       $("latestStats").innerHTML = tilesHtml([["目前場次", cur ? roundLabel(cur) : "—"], ["有資料的場次", lines.length],
-        ["最佳節拍時間", bestMine ? `${batchLabel(bestMine.batch)}（${bestMine.takt_sec} 秒/組）` : "—"],
+        ["最佳產線 Cycle Time", bestMine ? `${batchLabel(bestMine.batch)}（${bestMine.takt_sec} 秒/組）` : "—"],
         ["完成組數", sum("output_sets")], ["最慢工站", `${worst.bottleneck}（${worst.bottleneck_ct}s）`]]);
     }
     renderLines(lines, d.stations || [], `${scope} 目前沒有資料`);
@@ -375,7 +375,7 @@
     }
   };
 
-  // 後端（Render）還是舊版時，資料沒有節拍時間等新欄位：用舊欄位補上，並提醒更新
+  // 後端（Render）還是舊版時，資料沒有產線 Cycle Time 等新欄位：用舊欄位補上，並提醒更新
   let oldBackend = false;
   function normalize(d) {
     oldBackend = (d.lines || []).some((l) => l.output_sets === undefined);
