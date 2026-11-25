@@ -1,0 +1,3302 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>多管道參數化 API Dashboard（改良版）</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 18px 20px;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+      margin-bottom: 16px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 21px;
+      color: #1e293b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: bold;
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    select, input[type="text"], button {
+      padding: 7px 11px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      font-size: 13px;
+      font-family: inherit;
+      background: #fff;
+    }
+    button { cursor: pointer; }
+    button.primary {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+      font-weight: bold;
+    }
+    button.primary:hover { background: #1d4ed8; }
+    button.secondary {
+      background: #f8fafc;
+      color: #334155;
+      font-weight: bold;
+    }
+    button.secondary:hover { background: #e2e8f0; }
+
+    /* 中繼資料庫狀態列 (ta1, ta2, ta3) */
+    .relay-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed #cbd5e1;
+    }
+    .relay-table-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+    .relay-table-box b { color: #0f172a; font-size: 13px; }
+    .relay-meta { color: #64748b; margin-top: 2px; }
+
+    /* 多管道 API 變數篩選控制台 */
+    .api-console {
+      background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+      border: 1px solid #bfdbfe;
+    }
+    .api-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .api-tab {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid #93c5fd;
+      background: #ffffff;
+      color: #1e40af;
+      font-weight: bold;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .api-tab.active {
+      background: #1d4ed8;
+      color: #ffffff;
+      border-color: #1d4ed8;
+      box-shadow: 0 2px 6px rgba(29, 78, 216, 0.25);
+    }
+    .param-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      background: #ffffff;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid #dbeafe;
+    }
+    .param-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: bold;
+      color: #334155;
+    }
+    .param-item.disabled {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    .code-banner {
+      margin-top: 10px;
+      background: #0f172a;
+      color: #38bdf8;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    /* 工站拓樸網路圖 (右圖 100% 還原區) */
+    .section-title {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      color: #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .legend-bar {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: #475569;
+      margin-bottom: 12px;
+    }
+    .network-stage {
+      position: relative;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      min-height: 220px;
+    }
+    .network-columns {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      gap: 42px;
+      min-width: max-content;
+    }
+    .network-col {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      gap: 14px;
+    }
+    .net-node {
+      width: 196px;
+      padding: 8px 10px;
+      border-radius: 3px;
+      text-align: center;
+      background: #ecfdf5;
+      border: 1.8px solid #22c55e;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+      transition: transform 0.15s;
+    }
+    .net-node.GREEN {
+      background: #ecfdf5;
+      border: 1.8px solid #22c55e;
+    }
+    .net-node.YELLOW {
+      background: #fef9c3;
+      border: 1.8px solid #ca8a04;
+    }
+    .net-node.PURPLE {
+      background: #f3e8ff;
+      border: 1.8px solid #9333ea;
+    }
+    .net-node.RED {
+      background: #ffe4e6;
+      border: 2.5px solid #dc2626;
+    }
+    .net-node-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+    .net-node-line {
+      font-size: 11.5px;
+      color: #1e293b;
+      margin: 3px 0;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    .net-node-badge {
+      font-size: 11.5px;
+      font-weight: 800;
+      color: #dc2626;
+      margin-top: 3px;
+    }
+    #networkSvg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* 左圖 KPI 摘要卡片與 9 站狀態網格 */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .kpi-box {
+      background: #fff;
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+      border-left: 4px solid #3b82f6;
+    }
+    .kpi-box.success { border-left-color: #10b981; }
+    .kpi-box.bottleneck { border-left-color: #ef4444; }
+    .kpi-box.purple { border-left-color: #8b5cf6; }
+    .kpi-label {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: bold;
+    }
+    .kpi-value {
+      font-size: 22px;
+      font-weight: 800;
+      margin-top: 4px;
+      color: #0f172a;
+    }
+    .kpi-sub {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 3px;
+    }
+    .station-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+      gap: 10px;
+    }
+    .st-card {
+      border-radius: 10px;
+      padding: 10px 12px;
+      border: 2px solid #cbd5e1;
+      background: #f8fafc;
+    }
+    .st-card.green { background: #f0fdf4; border-color: #86efac; }
+    .st-card.yellow { background: #fefce8; border-color: #fde047; }
+    .st-card.purple { background: #faf5ff; border-color: #d8b4fe; }
+    .st-card.red { background: #fef2f2; border-color: #fca5a5; }
+    .st-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    .st-meta {
+      font-size: 12px;
+      color: #334155;
+      line-height: 1.5;
+    }
+
+    /* 進階跨組比對專區 (多組勾選器 + PK 排行榜 + 9站彩色熱力圖) */
+    .compare-group-bar {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 14px;
+      background: #fff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .grp-chk-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      font-size: 12.5px;
+      font-weight: bold;
+      cursor: pointer;
+      user-select: none;
+    }
+    .grp-chk-label.checked {
+      background: #dbeafe;
+      border-color: #2563eb;
+      color: #1e40af;
+    }
+    .grp-chk-label.has-data {
+      border-color: #38bdf8;
+    }
+    .heat-cell {
+      text-align: center;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 7px 6px;
+      font-size: 12.5px;
+    }
+    .heat-fast { background: #dcfce7; color: #166534; }
+    .heat-mid  { background: #fef9c3; color: #854d0e; }
+    .heat-slow { background: #ffedd5; color: #9a3412; }
+    .heat-bottle { background: #fee2e2; color: #991b1b; border: 1.5px solid #ef4444; font-weight: 900; }
+    .heat-empty { background: #f8fafc; color: #94a3b8; font-weight: normal; }
+
+    /* 圖表與表格區 */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .chart-wrap {
+      position: relative;
+      height: 290px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+    }
+    th {
+      background: #f8fafc;
+      color: #475569;
+      font-weight: bold;
+    }
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+      max-height: 320px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 1. 頂部：中繼資料庫定時同步中心 (對應手繪圖 Subas -> ta1, ta2, ta3) -->
+    <div class="card">
+      <div class="header">
+        <h1>
+          🗄️ 中繼快取資料庫 ＆ 多管道參數化 API 系統
+          <span class="badge">對應手繪架構：Subas ➔ ta1 / ta2 / ta3 ➔ Api1~3 & ApiFlow</span>
+          <span class="badge" style="background:#dcfce7;color:#166534;">改良版：公式對齊老師即時監控中心</span>
+        </h1>
+        <div class="controls">
+          <label>
+            資料來源模式：
+            <select id="dataSourceModeSelect" onchange="onDataSourceModeChange()">
+              <option value="CLOUD_TO_JSON" selected>☁️ 雲端有新數據 ➔ 自動寫入中繼 JSON 並從 JSON 讀取</option>
+              <option value="PURE_LOCAL_JSON">📄 純從本地中繼檔 (relay_db.json) 抓取資料（0 雲端連線）</option>
+            </select>
+          </label>
+          <label id="syncIntervalWrap">
+            偵測頻率：
+            <select id="syncIntervalSelect">
+              <option value="10000" selected>⚡ Realtime 推播 + 10秒異動偵測</option>
+              <option value="30000">⚡ Realtime 推播 + 30秒異動偵測</option>
+              <option value="0">🔕 純 Realtime / 手動</option>
+            </select>
+          </label>
+          <button class="primary" onclick="bindLocalRelayJsonFile()" title="綁定後，每次有新數據都會自動覆寫更新硬碟上的 relay_db.json">
+            📌 綁定自動寫入 relay_db.json
+          </button>
+          <button class="secondary" onclick="triggerLoadLocalJsonFile()">
+            📂 讀取 relay_db.json
+          </button>
+          <button class="secondary" onclick="downloadRelayDbJson()">
+            💾 下載中繼庫 relay_db.json
+          </button>
+          <input type="file" id="localJsonFileInput" accept=".json" style="display:none;" onchange="handleLocalJsonFileSelected(event)" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 多管道 API 與學生自訂變數篩選器 (對應手繪圖 Api1(x), Api2(x,x), Ap3(0,0,0)) -->
+    <div class="card api-console">
+      <div class="section-title">
+        <span>🧪 多管道 API 變數篩選控制台（學生可自由切換管道或輸入變數篩選，不需寫 SQL）</span>
+      </div>
+
+      <!-- 5 條 API 管道切換按鈕 -->
+      <div class="api-tabs">
+        <button class="api-tab active" id="tab_API1" onclick="selectApiChannel('API1')">
+          管道 1：Api1(group) — 單變數
+        </button>
+        <button class="api-tab" id="tab_API2" onclick="selectApiChannel('API2')">
+          管道 2：Api2(group, station) — 雙變數
+        </button>
+        <button class="api-tab" id="tab_API3" onclick="selectApiChannel('API3')">
+          管道 3：Api3(group, station, round) — 三變數
+        </button>
+        <button class="api-tab" id="tab_APIFLOW" onclick="selectApiChannel('APIFLOW')">
+          管道 4：ApiFlow(group, round) — 網路流程圖專用 API
+        </button>
+        <button class="api-tab" id="tab_APICOMPARE" onclick="selectApiChannel('APICOMPARE')" style="border-color:#7c3aed; color:#6d28d9;">
+          ⚔️ 管道 5：ApiCompare(groups, station, round) — 同頁跨組比對 & 熱力圖
+        </button>
+        <button class="api-tab" id="tab_APIWIP" onclick="selectApiChannel('APIWIP')" style="border-color:#0d9488; color:#0f766e;">
+          📦 管道 6：ApiWip(group, round, buffer) — WIP 時間軸階梯圖 & Starved 缺料 API
+        </button>
+      </div>
+
+      <!-- 變數輸入列 -->
+      <div class="param-row">
+        <div class="param-item" id="param1Wrap">
+          <span>變數 1：</span>
+          <select id="paramGroup"></select>
+        </div>
+
+        <div class="param-item" id="param2Wrap">
+          <span>變數 2：</span>
+          <select id="paramStation">
+            <option value="ALL">ALL (全部工站)</option>
+            <option value="ST01">ST01</option>
+            <option value="ST02">ST02</option>
+            <option value="ST03">ST03</option>
+            <option value="ST04">ST04</option>
+            <option value="ST05">ST05</option>
+            <option value="ST06">ST06</option>
+            <option value="ST07">ST07</option>
+            <option value="ST08">ST08</option>
+            <option value="ST09">ST09</option>
+          </select>
+        </div>
+
+        <div class="param-item" id="param3Wrap">
+          <span>變數 3：</span>
+          <select id="paramRound">
+            <option value="ALL" selected>ALL (全部場次)</option>
+            <option value="TEST1">TEST1 (第 1 次測試)</option>
+            <option value="TEST2">TEST2 (第 2 次測試)</option>
+            <option value="TEST3">TEST3 (第 3 次測試)</option>
+            <option value="PROD">PROD (正式實作)</option>
+          </select>
+        </div>
+
+        <div class="param-item" id="param4Wrap" style="display:none;">
+          <span>站間 Buffer：</span>
+          <select id="paramWipBuffer" onchange="executeStudentApiQuery()">
+            <option value="TOTAL">TOTAL (全線合計 WIP)</option>
+          </select>
+        </div>
+
+        <button class="primary" onclick="executeStudentApiQuery()">▶️ 執行 API 查詢（讀中繼庫）</button>
+      </div>
+
+      <!-- 管道 5 專屬：多組別比對勾選列 -->
+      <div class="compare-group-bar" id="compareGroupBar">
+        <span style="font-size:13px; font-weight:800; color:#1e3a8a;">⚔️ 勾選要比對的組別：</span>
+        <button type="button" class="secondary" style="padding:4px 8px; font-size:12px;" onclick="quickSelectCompareGroups('G23_G25')">
+          🧪 只選 G23~G25
+        </button>
+        <button type="button" class="secondary" style="padding:4px 8px; font-size:12px;" onclick="quickSelectCompareGroups('ACTIVE')">
+          ⚡ 全選有資料組別
+        </button>
+        <div id="compareCheckboxesWrap" style="display:flex; flex-wrap:wrap; gap:6px; flex:1;"></div>
+      </div>
+
+      <!-- 即時顯示對應的學生端 JS 呼叫語法與 REST URL -->
+      <div class="code-banner">
+        <span id="apiCallCodeText">const data = await Api1("G23");</span>
+        <span style="color:#94a3b8; font-size:12px;" id="apiRestUrlText">GET /api/v1/ta1?group=G23</span>
+      </div>
+    </div>
+
+    <!-- 2.5 KPI 摘要卡片 + 各工作站統計與在製品（WIP）狀態看板 -->
+    <div id="singleGroupTopSection">
+      <div class="kpi-grid">
+        <div class="kpi-box">
+          <div class="kpi-label">完工事件總筆數</div>
+          <div class="kpi-value" id="kpiTotalEvents">0 筆</div>
+          <div class="kpi-sub">分頁讀取，不受 1000 筆限制</div>
+        </div>
+        <div class="kpi-box success">
+          <div class="kpi-label">終點站產出成品數</div>
+          <div class="kpi-value" id="kpiFinalOutput">0 組</div>
+          <div class="kpi-sub" id="kpiFinalStation">終點工站：--</div>
+        </div>
+        <div class="kpi-box purple">
+          <div class="kpi-label">產線 Cycle Time（總耗時 ÷ 產出組數）</div>
+          <div class="kpi-value" id="kpiLineCycle">--</div>
+          <div class="kpi-sub" id="kpiLineCycleSub">選單一組別 + 單一場次時計算</div>
+        </div>
+        <div class="kpi-box bottleneck">
+          <div class="kpi-label">瓶頸候選站（最高平均 CT）</div>
+          <div class="kpi-value" id="kpiBottleneck">--</div>
+          <div class="kpi-sub">限制整線最大產出率</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <span>🚦 各工作站統計、加工波動與在製品（WIP）狀態看板</span>
+          <span style="font-size:12px; color:#64748b; font-weight:normal;">
+            🟢 正常 ｜ 🟡 飢餓缺料 (WIP=0) ｜ 🟣 滿載阻塞 (達上限) ｜ 🔴 瓶頸候選站
+          </span>
+        </div>
+        <div class="station-grid" id="stationStatusGrid"></div>
+      </div>
+
+      <!-- 3. 右圖：1. 工站順序圖與在製品 (WIP) 即時看板（由 ApiFlow 自動串接繪製） -->
+      <div class="card">
+        <div class="section-title">
+          <span>1. 工站順序圖與在製品 (WIP) 即時看板（由 `ApiFlow` 串接 `ta1 + ta2 + ta3` 自動生成）</span>
+          <span style="font-size:12px; color:#0369a1; font-weight:bold;" id="networkRoundBadge">目前檢視：G23 / ALL</span>
+        </div>
+        <div class="legend-bar">
+          <span>🟩 綠燈：流暢正常（物料充足）</span>
+          <span>🟨 黃燈：飢餓缺料（站前可開工為 0 件/套）</span>
+          <span>🟪 紫燈：滿載阻塞（站後待領達 WIP 上限）</span>
+          <span>🟥 🚨 紅燈：瓶頸站（該組平均 Cycle Time 最大值）</span>
+        </div>
+
+        <!-- 動態拓樸畫布（支援並聯匯流 ST01+ST02 -> ST03 與串聯流程） -->
+        <div class="network-stage" id="networkStage">
+          <svg id="networkSvg"></svg>
+          <div class="network-columns" id="networkColumns"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3.5 同頁跨組比對專區（當選取「⚔️ 管道 5：ApiCompare」時自動顯示） -->
+    <div id="compareGroupTopSection" style="display:none;">
+      <div class="card">
+        <div class="section-title">
+          <span>🏆 1. 跨組績效 PK 排行榜與瓶頸診斷表（同頁並排對決）</span>
+          <span style="font-size:12px; color:#64748b;" id="compareSummaryBadge">--</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>組別</th>
+                <th>總完工事件數</th>
+                <th>終點站總成品數</th>
+                <th>產線 Cycle Time</th>
+                <th>全線平均 CT (秒)</th>
+                <th>瓶頸候選站 (最高平均 CT)</th>
+                <th>瓶頸站波動 (P90 / 標準差 SD)</th>
+                <th>跨組表現診斷</th>
+              </tr>
+            </thead>
+            <tbody id="comparePkTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <span>🔥 2. 跨組 × 9 工作站「Cycle Time 彩色熱力圖矩陣（Heatmap）」</span>
+          <span style="font-size:12px; color:#64748b; font-weight:normal;">
+            🟩 &lt;45s 流暢快速 ｜ 🟨 45~65s 一般速度 ｜ 🟧 &gt;65s 偏慢 ｜ 🟥 🚨 該組瓶頸站
+          </span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead id="compareHeatmapThead"></thead>
+            <tbody id="compareHeatmapTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3.8 WIP / Starved 時間軸分析專區（由管道 6：ApiWip(group, round, buffer) 自動計算並渲染） -->
+    <div id="wipTimelineTopSection" class="card" style="border:1.5px solid #99f6e4; margin-bottom:16px;">
+      <div class="section-title" style="flex-wrap:wrap; gap:10px;">
+        <span>📦 WIP / Starved 時間軸分析看板（由 `ApiWip(group, round, buffer)` 即時串接中繼庫 `ta1 ~ ta5` 產生）</span>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <label for="wipChartXAxisMode" style="font-size:12px; color:#475569; font-weight:bold;">橫軸顯示：</label>
+          <select id="wipChartXAxisMode" onchange="onWipChartControlChange()" style="font-size:12px; padding:4px 8px;">
+            <option value="BOTH" selected>⏱️ 開工經過秒數 ＋ 實際時間（推薦教學用）</option>
+            <option value="ELAPSED">⏱️ 僅顯示開工經過秒數 (0s ~ Ns)</option>
+            <option value="CLOCK">🕒 僅顯示實際時鐘時間 (HH:MM:SS)</option>
+          </select>
+          <span style="font-size:12px; color:#0f766e; background:#f0fdfa; border:1px solid #99f6e4; padding:3px 10px; border-radius:999px;">
+            💡 滑鼠游標移至圖上圓點可顯示詳細座標與觸發事件
+          </span>
+        </div>
+      </div>
+      <div id="wipApiStatusLine" style="font-size:12.5px; color:#64748b; margin-bottom:10px;">載入 WIP 時間軸中...</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(175px, 1fr)); gap:10px; margin-bottom:14px;">
+        <div style="padding:12px; background:#f0fdfa; border:1px solid #ccfbf1; border-radius:8px;">
+          <div style="font-size:12px; color:#0f766e; font-weight:bold;">平均站間 WIP（時間加權）</div>
+          <div id="wipKpiAvgTotal" style="font-size:24px; font-weight:800; color:#0f172a; margin-top:3px;">--</div>
+        </div>
+        <div style="padding:12px; background:#f0fdfa; border:1px solid #ccfbf1; border-radius:8px;">
+          <div style="font-size:12px; color:#0f766e; font-weight:bold;">全線最高同時 WIP</div>
+          <div id="wipKpiMaxTotal" style="font-size:24px; font-weight:800; color:#0f172a; margin-top:3px;">--</div>
+        </div>
+        <div style="padding:12px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px;">
+          <div style="font-size:12px; color:#b45309; font-weight:bold;">全線各站累計缺料時間</div>
+          <div id="wipKpiStarvedTotal" style="font-size:24px; font-weight:800; color:#0f172a; margin-top:3px;">--</div>
+        </div>
+        <div style="padding:12px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px;">
+          <div style="font-size:12px; color:#b45309; font-weight:bold;">平均每次 Starved</div>
+          <div id="wipKpiStarvedAvg" style="font-size:24px; font-weight:800; color:#0f172a; margin-top:3px;">--</div>
+        </div>
+      </div>
+
+      <div id="wipInteractiveChartWrap" style="position:relative; overflow-x:auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:12px; min-height:260px; margin-bottom:14px;">
+        <span style="color:#64748b; font-size:13px;">等待生產事件資料...</span>
+      </div>
+
+      <div class="charts-grid" style="margin-bottom:0;">
+        <div>
+          <div style="font-weight:bold; font-size:14px; color:#1e293b; margin-bottom:6px;">各 Buffer 平均與最大 WIP（點擊列可切換上方階梯圖）</div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Buffer (站間走廊)</th>
+                  <th>目前 WIP</th>
+                  <th>平均 WIP (時間加權)</th>
+                  <th>最大 WIP (峰值)</th>
+                </tr>
+              </thead>
+              <tbody id="wipPerBufferTbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <div style="font-weight:bold; font-size:14px; color:#1e293b; margin-bottom:6px;">各站 Starved（缺料乾等）與 Ready（齊套待開工）</div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>工站</th>
+                  <th>Starved 次數</th>
+                  <th>累計 Starved 秒</th>
+                  <th>平均每次秒數</th>
+                  <th>累計 Ready 秒</th>
+                </tr>
+              </thead>
+              <tbody id="wipStarvedTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 圖表區：依上方 API 管道與變數篩選結果即時繪製 -->
+    <div class="charts-grid">
+      <div class="card">
+        <div class="section-title">
+          <span id="barChartTitle">📊 2. 各工作站平均 Cycle Time（長條圖）</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="barChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <span id="lineChartTitle">📈 3. 逐件加工 Cycle Time 趨勢（折線圖）</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="lineChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. 該 API 管道回傳的 JSON 格式與篩選明細表 -->
+    <div class="charts-grid">
+      <div class="card">
+        <div class="section-title">
+          <span>📋 目前 API 管道篩選出的生產事件明細</span>
+          <span style="font-size:12px; color:#64748b;" id="tableCountBadge">共 0 筆</span>
+        </div>
+        <div style="overflow-x:auto; max-height:310px;">
+          <table>
+            <thead>
+              <tr>
+                <th>組別</th>
+                <th>工站</th>
+                <th>產品/場次編號</th>
+                <th>加工秒數 (CT)</th>
+                <th>站內等待</th>
+                <th>完工時間</th>
+              </tr>
+            </thead>
+            <tbody id="filteredLogsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <span>📦 目前 API 管道回傳的標準 JSON 結構（學生可直接餵給 AI 畫圖）</span>
+        </div>
+        <pre id="apiJsonOutput">載入中...</pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // 【一、雲端與中繼資料庫設定】
+    // ============================================================================
+    const SUPABASE_URL = "https://fqbsrcbxtmagczykoesv.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_mn0CAB_nkrDycq6DS3Q2_g_-80SlWHB";
+
+    // 中繼快取資料庫 (Relay Database)，對應老師手繪圖的 ta1(), ta2(), ta3() 與 WIP 擴充表 ta4, ta5
+    const RelayDB = {
+      ta1_events: [],          // 對應 event 表
+      ta2_station_wip: [],     // 對應 station_wip 表
+      ta3_station_flow: [],    // 對應 station_flow 表
+      ta4_production_run: [],  // 對應 production_run 表（若雲端尚未建立則自動由 ta1+ta3 推算）
+      ta5_wip_timeline: [],    // 對應 wip_timeline 表（若雲端尚未建立則自動由 ta1+ta3 推算）
+      lastEventTime: null,     // 記錄目前最新一筆 event 的 start_time，用來判斷有無新增數據
+      lastWipTime: null,       // 記錄目前最新一筆 station_wip 的 updated_at
+      lastSyncAt: null,
+      lastTriggerReason: "尚未同步",
+      cloudFullSyncCount: 0,   // 完整抓取次數（僅初次載入或手動強制重抓）
+      deltaFetchCount: 0,      // 偵測到新數據並抓取增量資料的次數
+      skippedProbeCount: 0,    // 無新數據而略過抓取的次數
+      realtimeStatus: "連線中...",
+      studentApiCallCount: 0,
+      jsonFileSource: "記憶體 + localStorage (relay_db.json)"
+    };
+
+    let relayFileHandle = null; // 瀏覽器 File System Access API 綁定的實體 relay_db.json 控制代碼
+
+    // 將任意 UTC / ISO 時間字串轉換為台灣時區 (UTC+8, +08:00) 格式，並拆解出 Excel 友善的「日期 (YYYY-MM-DD)」與「時間 (HH:MM:SS.mmm)」
+    function toTaiwanIso(isoStr) {
+      if (!isoStr) return isoStr;
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      const twMs = d.getTime() + 8 * 60 * 60 * 1000;
+      return new Date(twMs).toISOString().replace("Z", "+08:00");
+    }
+
+    function splitToTaiwanDateAndTime(isoStr) {
+      if (!isoStr) return { date: "", clock: "" };
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return { date: "", clock: "" };
+      const twIso = new Date(d.getTime() + 8 * 60 * 60 * 1000).toISOString();
+      return {
+        date: twIso.slice(0, 10),
+        clock: twIso.slice(11, 23)
+      };
+    }
+
+    function normalizeEventsToTaiwanTime(list) {
+      if (!Array.isArray(list)) return [];
+      return list.map(r => {
+        const stSp = splitToTaiwanDateAndTime(r.start_time);
+        const fnSp = splitToTaiwanDateAndTime(r.finish_time);
+        return {
+          ...r,
+          start_date: r.start_date || stSp.date,
+          start_clock: r.start_clock || stSp.clock,
+          finish_date: r.finish_date || fnSp.date,
+          finish_clock: r.finish_clock || fnSp.clock,
+          start_time: toTaiwanIso(r.start_time),
+          finish_time: toTaiwanIso(r.finish_time)
+        };
+      });
+    }
+
+    function normalizeWipsToTaiwanTime(list) {
+      if (!Array.isArray(list)) return [];
+      return list.map(r => ({
+        ...r,
+        updated_at: toTaiwanIso(r.updated_at)
+      }));
+    }
+
+    // 將目前中繼庫打包成標準 relay_db.json 格式，並自動寫入 localStorage 與綁定的實體 relay_db.json 檔案
+    async function persistRelayDbToJson() {
+      const relayJsonPayload = {
+        relay_schema_version: "1.1",
+        timezone: "Asia/Taipei (UTC+8)",
+        exported_at: toTaiwanIso(new Date().toISOString()),
+        last_event_time: toTaiwanIso(RelayDB.lastEventTime),
+        last_wip_time: toTaiwanIso(RelayDB.lastWipTime),
+        ta1_events: RelayDB.ta1_events,
+        ta2_station_wip: RelayDB.ta2_station_wip,
+        ta3_station_flow: RelayDB.ta3_station_flow,
+        ta4_production_run: RelayDB.ta4_production_run,
+        ta5_wip_timeline: RelayDB.ta5_wip_timeline
+      };
+      const jsonString = JSON.stringify(relayJsonPayload, null, 2);
+
+      // 1. 自動存入瀏覽器本地中繼 JSON 快取
+      try {
+        localStorage.setItem("RELAY_DB_JSON_CACHE", jsonString);
+      } catch (e) {}
+
+      // 2. 若已透過「📌 綁定自動寫入 relay_db.json」授權實體檔案，有新數據時自動寫入硬碟上的 relay_db.json！
+      if (relayFileHandle) {
+        try {
+          const writable = await relayFileHandle.createWritable();
+          await writable.write(jsonString);
+          await writable.close();
+          RelayDB.jsonFileSource = `🟢 已自動寫入硬碟 ${relayFileHandle.name}`;
+        } catch (err) {
+          RelayDB.jsonFileSource = `⚠️ 寫入實體檔失敗: ${err.message}`;
+        }
+      }
+      return relayJsonPayload;
+    }
+
+    // 從 relay_db.json 物件載入中繼庫，並讓所有 API 管道從這份 JSON 抓取資料
+    function loadRelayDbFromJsonObject(jsonObj, sourceLabel = "relay_db.json") {
+      if (!jsonObj) return false;
+      RelayDB.ta1_events = normalizeEventsToTaiwanTime(jsonObj.ta1_events);
+      RelayDB.ta2_station_wip = normalizeWipsToTaiwanTime(jsonObj.ta2_station_wip);
+      RelayDB.ta3_station_flow = Array.isArray(jsonObj.ta3_station_flow) ? jsonObj.ta3_station_flow : [];
+      RelayDB.ta4_production_run = Array.isArray(jsonObj.ta4_production_run) ? jsonObj.ta4_production_run : [];
+      RelayDB.ta5_wip_timeline = Array.isArray(jsonObj.ta5_wip_timeline) ? jsonObj.ta5_wip_timeline : [];
+      updateWatermarks();
+      RelayDB.lastSyncAt = jsonObj.exported_at ? new Date(jsonObj.exported_at) : new Date();
+      RelayDB.lastTriggerReason = `📄 從 ${sourceLabel} 載入`;
+      RelayDB.jsonFileSource = `📄 ${sourceLabel}`;
+      updateRelayStatusUI();
+      executeStudentApiQuery();
+      return true;
+    }
+
+    // 綁定硬碟上的實體 relay_db.json（Chrome / Edge 支援直接自動覆寫硬碟 JSON 檔）
+    async function bindLocalRelayJsonFile() {
+      if (!window.showSaveFilePicker) {
+        alert("您的瀏覽器不支援自動寫檔 API，將直接下載 relay_db.json 檔案。");
+        downloadRelayDbJson();
+        return;
+      }
+      try {
+        relayFileHandle = await window.showSaveFilePicker({
+          suggestedName: "relay_db.json",
+          types: [{ description: "Relay Database JSON", accept: { "application/json": [".json"] } }]
+        });
+        await persistRelayDbToJson();
+        updateRelayStatusUI();
+        alert(`✅ 已成功綁定實體中繼檔：${relayFileHandle.name}\n之後每當雲端有新增數據，系統都會自動寫入這份 JSON 檔，並讓程式從中抓取資料！`);
+      } catch (e) {
+        // 使用者取消選擇
+      }
+    }
+
+    // 手動下載中繼庫 relay_db.json
+    async function downloadRelayDbJson() {
+      const payload = await persistRelayDbToJson();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "relay_db.json";
+      a.click();
+    }
+
+    function triggerLoadLocalJsonFile() {
+      document.getElementById("localJsonFileInput").click();
+    }
+
+    function handleLocalJsonFileSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          loadRelayDbFromJsonObject(parsed, `本地檔案 (${file.name})`);
+        } catch (err) {
+          alert("JSON 格式解析失敗：" + err.message);
+        }
+      };
+      reader.readAsText(file, "utf-8");
+      event.target.value = "";
+    }
+
+    // 嘗試從同資料夾下的 ./relay_db.json 或 localStorage 讀取中繼 JSON
+    async function tryFetchLocalRelayJsonFile() {
+      try {
+        const res = await fetch("./relay_db.json", { cache: "no-cache" });
+        if (res.ok) {
+          const jsonObj = await res.json();
+          return loadRelayDbFromJsonObject(jsonObj, "./relay_db.json (同目錄實體檔)");
+        }
+      } catch (e) {
+        // file:// 協定下若瀏覽器阻擋 fetch 本地檔，改從 localStorage 的 RELAY_DB_JSON_CACHE 讀取
+      }
+      try {
+        const cachedStr = localStorage.getItem("RELAY_DB_JSON_CACHE");
+        if (cachedStr) {
+          const jsonObj = JSON.parse(cachedStr);
+          return loadRelayDbFromJsonObject(jsonObj, "本地中繼快取 (relay_db.json)");
+        }
+      } catch (e) {}
+      return false;
+    }
+
+    function onDataSourceModeChange() {
+      const mode = document.getElementById("dataSourceModeSelect").value;
+      const intervalWrap = document.getElementById("syncIntervalWrap");
+      if (mode === "PURE_LOCAL_JSON") {
+        intervalWrap.style.display = "none";
+        if (syncTimer) clearInterval(syncTimer);
+        tryFetchLocalRelayJsonFile().then(ok => {
+          if (!ok) {
+            alert("請點選右上角「📂 讀取 relay_db.json」選擇您電腦上的 relay_db.json 檔案！");
+          }
+        });
+      } else {
+        intervalWrap.style.display = "inline-block";
+        syncFromCloudSupabase(false);
+        setupSyncSchedule();
+      }
+    }
+
+    let currentChannel = "API1";
+    let activeApiResult = null;
+    let syncTimer = null;
+    let barChartInstance = null;
+    let lineChartInstance = null;
+    let supabaseClient = null;
+
+    // 初始化組別下拉選單 (G01 ~ G25 + ALL)
+    const paramGroup = document.getElementById("paramGroup");
+    for (let i = 1; i <= 25; i++) {
+      const gid = "G" + String(i).padStart(2, "0");
+      const opt = document.createElement("option");
+      opt.value = gid;
+      opt.textContent = gid;
+      paramGroup.appendChild(opt);
+    }
+    const allOpt = document.createElement("option");
+    allOpt.value = "ALL";
+    allOpt.textContent = "ALL (全班組別)";
+    paramGroup.appendChild(allOpt);
+    paramGroup.value = "G23";
+
+    // ============================================================================
+    // 【二、「有新增數據才抓取」雙引擎：Realtime 即時推播 + 增量異動探針】
+    // ============================================================================
+
+    // 改良版：分頁讀取（每頁 1000 筆，讀到完為止）→ 全班資料超過 1000 筆也不會缺
+    const SB_HEADERS = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
+    const EVENT_SELECT = "id,group_id,station_id,product_id,start_time,finish_time,duration_sec,wip_before_start,wip_after_finish,status";
+    const WIP_SELECT = "id,group_id,station_id,input_wip,output_wip,updated_at";
+    const FLOW_SELECT = "id,group_id,station_id,station_name,next_station_id";
+
+    async function fetchAllRows(path) {
+      const out = [];
+      for (let offset = 0; ; offset += 1000) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}&limit=1000&offset=${offset}`, { headers: SB_HEADERS });
+        if (!res.ok) throw new Error(`${path.split("?")[0]} 讀取失敗 (HTTP ${res.status})`);
+        const rows = await res.json();
+        out.push(...rows);
+        if (rows.length < 1000) return out;
+      }
+    }
+    // 雲端 event 表目前總筆數（只問筆數，不抓資料）
+    async function fetchRemoteEventCount() {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/event?select=id&limit=1`, { headers: { ...SB_HEADERS, Prefer: "count=exact" } });
+        const n = parseInt(((res.headers.get("content-range") || "").split("/")[1]), 10);
+        return Number.isFinite(n) ? n : null;
+      } catch (e) { return null; }
+    }
+    function flowSignature(rows) {
+      return JSON.stringify(rows.map(r => [r.group_id, r.station_id, r.next_station_id]).sort());
+    }
+
+    // 1. 初次載入（或手動強制重抓）：載入基準資料至中繼庫
+    async function syncFromCloudSupabase(forceFull = false) {
+      if (!forceFull && RelayDB.ta1_events.length > 0) {
+        return checkAndFetchOnlyWhenNewData("定時異動探測");
+      }
+
+      try {
+        const [evRows, wipRows, flowRows] = await Promise.all([
+          fetchAllRows(`event?select=${EVENT_SELECT}&order=start_time.asc,id.asc`),
+          fetchAllRows(`station_wip?select=${WIP_SELECT}&order=id.asc`),
+          fetchAllRows(`station_flow?select=${FLOW_SELECT}&order=station_id.asc,id.asc`)
+        ]);
+        // ta4：雲端有 production_run 表就一起讀（沒有這張表也不影響）
+        try {
+          RelayDB.ta4_production_run = await fetchAllRows("production_run?select=*&order=started_at.asc");
+        } catch (e) {}
+
+        RelayDB.ta1_events = normalizeEventsToTaiwanTime(evRows);
+        RelayDB.ta2_station_wip = normalizeWipsToTaiwanTime(wipRows);
+        RelayDB.ta3_station_flow = flowRows;
+        updateWatermarks();
+
+        RelayDB.lastSyncAt = new Date();
+        RelayDB.lastTriggerReason = "初次/手動完整載入 ➔ 寫入 relay_db.json";
+        RelayDB.cloudFullSyncCount += 1;
+
+        // 同步下來後，立即寫入中繼 JSON (relay_db.json)
+        await persistRelayDbToJson();
+
+        updateRelayStatusUI();
+        executeStudentApiQuery();
+      } catch (err) {
+        document.getElementById("ta1Status").textContent = `❌ 同步錯誤：${err.message}`;
+      }
+    }
+
+    // 2. 核心機制：先檢查「是否有比目前更新的資料」，有新增才抓那幾筆並更新畫面！
+    //    改良版：用「完工時間」判斷新資料（紀錄是在完工掃碼時才寫入雲端），往回多看 5 分鐘再用 id 去重，
+    //    另外核對雲端總筆數，對不上（有人刪除或補匯入舊資料）就整張重抓 → 不會漏抓
+    let probeRunning = false;
+    async function checkAndFetchOnlyWhenNewData(triggerSource = "異動偵測") {
+      if (probeRunning) return;
+      probeRunning = true;
+      try {
+        let evPath = `event?select=${EVENT_SELECT}&order=finish_time.asc,id.asc`;
+        if (RelayDB.lastFinishTime) {
+          const since = new Date(Date.parse(RelayDB.lastFinishTime) - 5 * 60 * 1000).toISOString();
+          evPath += `&finish_time=gte.${encodeURIComponent(since)}`;
+        }
+        let wipPath = `station_wip?select=${WIP_SELECT}&order=id.asc`;
+        if (RelayDB.lastWipTime) {
+          wipPath += `&updated_at=gt.${encodeURIComponent(RelayDB.lastWipTime)}`;
+        }
+
+        const [newEvRaw, newWipRaw, flowRows, remoteCount] = await Promise.all([
+          fetchAllRows(evPath),
+          fetchAllRows(wipPath),
+          fetchAllRows(`station_flow?select=${FLOW_SELECT}&order=station_id.asc,id.asc`),
+          fetchRemoteEventCount()
+        ]);
+        const newEvents = normalizeEventsToTaiwanTime(newEvRaw);
+        const newWips = normalizeWipsToTaiwanTime(newWipRaw);
+
+        // 合併事件（以 id 去重），只算真正新增或內容有變的筆數
+        const evMap = new Map();
+        const keyOf = r => r.id || `${r.group_id}_${r.station_id}_${r.start_time}`;
+        RelayDB.ta1_events.forEach(r => evMap.set(keyOf(r), r));
+        let addedEv = 0;
+        newEvents.forEach(r => {
+          const old = evMap.get(keyOf(r));
+          if (!old || JSON.stringify(old) !== JSON.stringify(r)) addedEv += 1;
+          evMap.set(keyOf(r), r);
+        });
+        let mergedEvents = Array.from(evMap.values());
+        let fullReload = false;
+        if (remoteCount !== null && remoteCount !== mergedEvents.length) {
+          mergedEvents = normalizeEventsToTaiwanTime(await fetchAllRows(`event?select=${EVENT_SELECT}&order=start_time.asc,id.asc`));
+          fullReload = true;
+        }
+        const flowChanged = flowSignature(flowRows) !== flowSignature(RelayDB.ta3_station_flow);
+
+        // 若完全沒有新增數據 ➔ 直接略過！不重抓舊資料、不重繪圖表
+        if (addedEv === 0 && newWips.length === 0 && !flowChanged && !fullReload) {
+          RelayDB.skippedProbeCount += 1;
+          updateRelayStatusUI();
+          return;
+        }
+
+        RelayDB.ta1_events = mergedEvents.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        if (newWips.length > 0) {
+          const wipMap = new Map();
+          RelayDB.ta2_station_wip.concat(newWips).forEach(r => {
+            const key = r.id || `${r.group_id}_${r.station_id}`;
+            wipMap.set(key, r);
+          });
+          RelayDB.ta2_station_wip = Array.from(wipMap.values());
+        }
+        if (flowChanged) RelayDB.ta3_station_flow = flowRows;
+
+        updateWatermarks();
+        RelayDB.deltaFetchCount += 1;
+        RelayDB.lastSyncAt = new Date();
+        const parts = [`+${addedEv}筆事件`, `+${newWips.length}筆WIP`];
+        if (flowChanged) parts.push("流程有變更");
+        if (fullReload) parts.push(`雲端筆數 ${remoteCount} 對不上 ➔ 整張重抓`);
+        RelayDB.lastTriggerReason = `${triggerSource} (${parts.join(" / ")}) ➔ 已更新 relay_db.json`;
+
+        // 有新增數據時，立即將更新後的中繼庫寫入 relay_db.json！
+        await persistRelayDbToJson();
+
+        updateRelayStatusUI();
+        executeStudentApiQuery();
+      } catch (err) {
+        console.warn("增量偵測失敗:", err);
+      } finally {
+        probeRunning = false;
+      }
+    }
+
+    // 3. 啟動 Supabase Realtime WebSocket 訂閱：當雲端有 INSERT/UPDATE 時立即觸發抓取新資料
+    function initRealtimeSubscription() {
+      if (!window.supabase || !window.supabase.createClient) {
+        RelayDB.realtimeStatus = "未載入 SDK（使用增量探測）";
+        return;
+      }
+      try {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        supabaseClient
+          .channel("relay-db-live-watch")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "event" },
+            () => {
+              // 當 event 表有新增或異動時，立即只抓新增的那筆數據
+              checkAndFetchOnlyWhenNewData("⚡ Realtime 偵測新完工紀錄");
+            }
+          )
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "station_wip" },
+            () => {
+              // 當 station_wip 表有庫存異動時，立即只抓異動的 WIP
+              checkAndFetchOnlyWhenNewData("⚡ Realtime 偵測 WIP 異動");
+            }
+          )
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "station_flow" },
+            async () => {
+              // 當流程圖結構被修改時，只重抓 station_flow
+              const res = await fetch(`${SUPABASE_URL}/rest/v1/station_flow?select=id,group_id,station_id,station_name,next_station_id&order=station_id.asc&limit=1000`, {
+                headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+              });
+              if (res.ok) {
+                RelayDB.ta3_station_flow = await res.json();
+                RelayDB.lastSyncAt = new Date();
+                RelayDB.lastTriggerReason = "⚡ Realtime 流程圖變更";
+                updateRelayStatusUI();
+                executeStudentApiQuery();
+              }
+            }
+          )
+          .subscribe((status) => {
+            RelayDB.realtimeStatus = status === "SUBSCRIBED" ? "🟢 已連線監聽中" : status;
+            updateRelayStatusUI();
+          });
+      } catch (e) {
+        RelayDB.realtimeStatus = "增量探測模式";
+      }
+    }
+
+    function updateWatermarks() {
+      // 改良版：記下「最晚的開工時間」（顯示用）與「最晚的完工時間」（判斷有沒有新資料用）
+      let maxStart = null, maxFinish = null;
+      RelayDB.ta1_events.forEach(r => {
+        if (r.start_time && (!maxStart || Date.parse(r.start_time) > Date.parse(maxStart))) maxStart = r.start_time;
+        if (r.finish_time && (!maxFinish || Date.parse(r.finish_time) > Date.parse(maxFinish))) maxFinish = r.finish_time;
+      });
+      RelayDB.lastEventTime = maxStart;
+      RelayDB.lastFinishTime = maxFinish;
+      let maxWipTs = RelayDB.lastWipTime;
+      RelayDB.ta2_station_wip.forEach(w => {
+        if (w.updated_at && (!maxWipTs || new Date(w.updated_at) > new Date(maxWipTs))) {
+          maxWipTs = w.updated_at;
+        }
+      });
+      RelayDB.lastWipTime = maxWipTs;
+    }
+
+    function updateRelayStatusUI() {
+      const timeStr = RelayDB.lastSyncAt ? RelayDB.lastSyncAt.toLocaleTimeString() : "--";
+      const el1 = document.getElementById("ta1Status");
+      const el2 = document.getElementById("ta2Status");
+      const el3 = document.getElementById("ta3Status");
+      const el4 = document.getElementById("syncCountStatus");
+      if (el1) el1.textContent = `已快取 ${RelayDB.ta1_events.length} 筆生產紀錄 (最後異動: ${timeStr})`;
+      if (el2) el2.textContent = `已快取 ${RelayDB.ta2_station_wip.length} 筆庫存設定 (原因: ${RelayDB.lastTriggerReason})`;
+      if (el3) el3.textContent = `已快取 ${RelayDB.ta3_station_flow.length} 筆流程連線 (Realtime: ${RelayDB.realtimeStatus})`;
+      if (el4) el4.textContent = `中繼檔:${RelayDB.jsonFileSource} ｜ 初始:${RelayDB.cloudFullSyncCount}次 ｜ 新數據寫入JSON:${RelayDB.deltaFetchCount}次 ｜ 略過:${RelayDB.skippedProbeCount}次 ｜ 程式讀JSON:${RelayDB.studentApiCallCount}次`;
+    }
+
+    // ============================================================================
+    // 【計算核心（改良版新增）】公式與老師「即時監控中心」、Python backend/simulation.py 完全相同
+    //   - 只算 status = COMPLETED 的紀錄
+    //   - 一律「同一組 + 同一場次」當成一條產線來算（場次選 ALL 時，各場次分開算再合計）
+    //   - 時間全部換成整數毫秒計算，四捨五入用「四捨五入到小數 1 位、5 一律進位」（同 Python ROUND_HALF_UP）
+    // ==== CORE START ====
+    const MAX_GAP_MS = 600 * 1000;          // 超過 600 秒的空檔不算等待（休息或換場）
+    const LONG_SPAN_MS = 3 * 3600 * 1000;   // 一個場次跨越超過 3 小時：多半混到不同天的資料
+
+    // 產品編號 → 場次：TEST2-P01 → TEST2；舊版 TEST-P01 → TEST1；P01（沒有 TEST）→ PROD（正式實作）
+    function roundOf(pid) {
+      const s = String(pid || "").trim().toUpperCase();
+      const m = s.match(/^TEST(\d+)-/);
+      if (m) return "TEST" + parseInt(m[1], 10);
+      if (s.startsWith("TEST")) return "TEST1";
+      return "PROD";
+    }
+    function roundSortKey(r) { return r === "PROD" ? 999 : (parseInt(String(r).slice(4), 10) || 998); }
+    function roundLabel(r) { return r === "PROD" ? "正式實作" : `第 ${String(r).slice(4)} 次測試`; }
+    function isCompleted(r) { return (r.status || "COMPLETED") === "COMPLETED"; }
+    function toMs(v) { if (v === null || v === undefined || v === "") return null; const t = Date.parse(v); return Number.isFinite(t) ? t : null; }
+    function durMs(r) { const n = Number(r.duration_sec); return Number.isFinite(n) ? Math.round(n * 1000) : 0; }
+
+    // 「num ÷ den 毫秒」換成秒並四捨五入到小數 1 位（整數運算，0.05 一律進位，跟手算一樣）
+    function r1ms(num, den = 1) {
+      if (!den) return 0;
+      const sign = (num < 0) !== (den < 0) ? -1 : 1;
+      const a = Math.abs(num), b = Math.abs(den) * 100;   // 100 毫秒 = 0.1 秒
+      return sign * Math.floor((2 * a + b) / (2 * b)) / 10;
+    }
+    // 「num ÷ den」四捨五入到整數（百分比用）
+    function r0(num, den) {
+      if (!den) return 0;
+      const sign = (num < 0) !== (den < 0) ? -1 : 1;
+      const a = Math.abs(num), b = Math.abs(den);
+      return sign * Math.floor((2 * a + b) / (2 * b));
+    }
+
+    // 流程候選順序（同老師 timer.html）：G01-T3 → G01-T2 → G01-T1 → G01；正式：G01-OFFICIAL → G01-T10 … G01-T1 → G01
+    function flowKeyCandidates(group, round) {
+      const keys = [];
+      if (round === "PROD") {
+        keys.push(`${group}-OFFICIAL`);
+        for (let r = 10; r >= 1; r--) keys.push(`${group}-T${r}`);
+      } else if (/^TEST\d+$/.test(round)) {
+        for (let r = parseInt(round.slice(4), 10); r >= 1; r--) keys.push(`${group}-T${r}`);
+      }
+      keys.push(group);
+      return keys;
+    }
+    function resolveFlow(group, round) {
+      for (const k of flowKeyCandidates(group, round)) {
+        const rows = RelayDB.ta3_station_flow.filter(f => String(f.group_id || "").trim() === k);
+        if (rows.length) return { key: k, rows };
+      }
+      return { key: null, rows: [] };
+    }
+    function edgesOf(flowRows) {
+      const set = new Set();
+      flowRows.forEach(f => {
+        const a = String(f.station_id || "").trim();
+        if (a) set.add(a + "\u0000" + String(f.next_station_id || "").trim());
+      });
+      return [...set].sort().map(s => s.split("\u0000"));
+    }
+    // 終點站：沒有任何「往下一站」連線的工站；有好幾個取編號最大的（同老師）
+    function terminalStation(edges) {
+      const nodes = new Set();
+      edges.forEach(([a, b]) => { nodes.add(a); if (b) nodes.add(b); });
+      const terms = [...nodes].filter(st => !edges.some(([a, b]) => a === st && b)).sort();
+      return terms.length ? terms[terms.length - 1] : null;
+    }
+    // 起點站：沒有前站送料進來的工站
+    function rootStations(edges) {
+      const nodes = new Set();
+      edges.forEach(([a, b]) => { nodes.add(a); if (b) nodes.add(b); });
+      return [...nodes].filter(st => !edges.some(([, b]) => b === st)).sort();
+    }
+
+    // 單一組別、單一場次（= 一條產線）的所有指標
+    function analyzeLine(rows, edges) {
+      const starts = rows.map(r => toMs(r.start_time)).filter(t => t !== null);
+      const ends = rows.map(r => toMs(r.finish_time)).filter(t => t !== null);
+      const lineStart = starts.length ? Math.min(...starts) : null;
+
+      // 1. 依工站分組、依開工時間排序：作業時間加總、等待時間（第一件從產線開跑算起；只算 0~600 秒）
+      const byStation = {};
+      rows.forEach(r => {
+        const st = String(r.station_id || "(未知)").trim();
+        (byStation[st] = byStation[st] || []).push(r);
+      });
+      const stations = Object.keys(byStation).sort();
+      const st = {};
+      const rowWaitMs = new Map();   // 每一筆紀錄自己的等待毫秒（明細表用）
+      stations.forEach(s => {
+        const evs = byStation[s].slice().sort((a, b) => (toMs(a.start_time) ?? 0) - (toMs(b.start_time) ?? 0));
+        let runMs = 0, waitMs = 0;
+        evs.forEach((r, i) => {
+          runMs += durMs(r);
+          const cur = toMs(r.start_time);
+          const prev = i === 0 ? lineStart : toMs(evs[i - 1].finish_time);
+          let w = 0;
+          if (cur !== null && prev !== null) {
+            const gap = cur - prev;
+            if (gap > 0 && gap < MAX_GAP_MS) w = gap;
+          }
+          waitMs += w;
+          rowWaitMs.set(r, w);
+        });
+        st[s] = { evs, n: evs.length, runMs, waitMs };
+      });
+
+      // 2. 瓶頸站：平均 Cycle Time 最大（用沒有四捨五入的值比；同分取編號小的）
+      let bottleneck = null;
+      stations.forEach(s => {
+        if (!st[s].n) return;
+        if (bottleneck === null || st[s].runMs * st[bottleneck].n > st[bottleneck].runMs * st[s].n) bottleneck = s;
+      });
+      const maxAvgSec = bottleneck ? st[bottleneck].runMs / st[bottleneck].n / 1000 : 0;
+      const sumAvgSec = stations.reduce((acc, s) => acc + (st[s].n ? st[s].runMs / st[s].n / 1000 : 0), 0);
+      const balancePct = maxAvgSec ? Math.floor((sumAvgSec / (stations.length * maxAvgSec)) * 1000 + 0.5 + 1e-9) / 10 : 0;
+
+      // 3. 產出：終點站的完工筆數；終點站還沒有完工紀錄時，暫用有完工的最後一站試算（標示未到終點）
+      const finalSt = terminalStation(edges) || (stations.length ? stations[stations.length - 1] : null);
+      let outputSt, reached;
+      if (finalSt && byStation[finalSt]) { outputSt = finalSt; reached = true; }
+      else { outputSt = stations.length ? stations[stations.length - 1] : null; reached = false; }
+      const outputEvs = outputSt ? (byStation[outputSt] || []) : [];
+      const outputSets = outputEvs.length;
+
+      // 4. 產線 Cycle Time = 總耗時 ÷ 產出組數；穩態間隔 = 產出站「首件完工 → 末件完工」÷（組數 − 1）
+      const totalMs = starts.length && ends.length ? Math.max(...ends) - Math.min(...starts) : 0;
+      const hasTakt = outputSets > 0 && totalMs > 0;
+      const outFin = outputEvs.map(r => toMs(r.finish_time)).filter(t => t !== null).sort((a, b) => a - b);
+
+      // 5. 在製品：起點站開工的產品數 − 終點站完成的產品數
+      const roots = rootStations(edges).filter(s => byStation[s]);
+      const rootList = roots.length ? roots : stations.slice(0, 1);
+      const started = new Set(rootList.flatMap(s => byStation[s].map(r => r.product_id)));
+      const finished = reached ? new Set(outputEvs.map(r => r.product_id)) : new Set();
+
+      const station_stats = {};
+      stations.forEach(s => {
+        const x = st[s];
+        station_stats[s] = {
+          qty: x.n,
+          run_sec: r1ms(x.runMs),
+          avg_ct: x.n ? r1ms(x.runMs, x.n) : 0,
+          wait_sec: r1ms(x.waitMs),
+          avg_wait: x.n ? r1ms(x.waitMs, x.n) : 0,
+          util_pct: x.runMs + x.waitMs > 0 ? r1ms(x.runMs * 100 * 1000, x.runMs + x.waitMs) : 0,
+          // 佔產線 Cycle Time 幾 %、差幾秒（同老師監控中心「與本次 Cycle Time 比較」欄）
+          pct_of_line: hasTakt && x.n ? r0(x.runMs * outputSets * 100, x.n * totalMs) : null,
+          vs_line_sec: hasTakt && x.n ? r1ms(x.runMs * outputSets - totalMs * x.n, x.n * outputSets) : null,
+          // 以下給畫面用（沒有四捨五入）
+          _runMs: x.runMs, _waitMs: x.waitMs
+        };
+      });
+
+      return {
+        events: rows.length,
+        stations,
+        station_stats,
+        bottleneck,
+        bottleneck_ct: bottleneck ? r1ms(st[bottleneck].runMs, st[bottleneck].n) : 0,
+        balance_pct: balancePct,
+        final_station: finalSt,
+        output_station: outputSt,
+        terminal_reached: reached,
+        output_sets: outputSets,
+        finished: reached ? outputSets : 0,
+        wip: Math.max(started.size - finished.size, 0),
+        total_sec: r1ms(totalMs),
+        elapsed_min: r1ms(totalMs, 60),
+        takt_sec: hasTakt ? r1ms(totalMs, outputSets) : null,     // 產線 Cycle Time（欄位名稱同 Python）
+        steady_sec: outFin.length >= 2 ? r1ms(outFin[outFin.length - 1] - outFin[0], outFin.length - 1) : null,
+        throughput_per_hr: hasTakt && reached ? r1ms(3600 * outputSets * 1000 * 1000, totalMs) : 0,
+        wait_sec: r1ms(stations.reduce((acc, s) => acc + st[s].waitMs, 0)),
+        long_span: totalMs > LONG_SPAN_MS,
+        first_start: starts.length ? toTaiwanIso(new Date(Math.min(...starts)).toISOString()) : null,
+        last_finish: ends.length ? toTaiwanIso(new Date(Math.max(...ends)).toISOString()) : null,
+        _rowWaitMs: rowWaitMs
+      };
+    }
+
+    // 某組某場次的完工紀錄（只算 COMPLETED）
+    function lineRows(group, round) {
+      return RelayDB.ta1_events.filter(r => isCompleted(r)
+        && String(r.group_id || "").trim() === group
+        && (round === "ALL" || roundOf(r.product_id) === round));
+    }
+    // 一組有資料的場次（依 TEST1、TEST2 … PROD 排序）
+    function roundsOfGroup(group) {
+      const set = new Set(RelayDB.ta1_events.filter(r => isCompleted(r) && String(r.group_id || "").trim() === group)
+        .map(r => roundOf(r.product_id)));
+      return [...set].sort((a, b) => roundSortKey(a) - roundSortKey(b));
+    }
+    function groupsWithData() {
+      return [...new Set(RelayDB.ta1_events.filter(isCompleted).map(r => String(r.group_id || "").trim()).filter(Boolean))].sort();
+    }
+    // 依「組別 + 場次」切成一條一條產線，各自計算（場次 ALL = 該組所有場次）
+    function buildLines(group, round) {
+      const groups = group === "ALL" ? groupsWithData() : [group];
+      const lines = [];
+      groups.forEach(g => {
+        const rounds = round === "ALL" ? roundsOfGroup(g) : [round];
+        rounds.forEach(rd => {
+          const rows = lineRows(g, rd);
+          if (!rows.length) return;
+          const flow = resolveFlow(g, rd);
+          const edges = edgesOf(flow.rows);
+          lines.push({ group_id: g, round: rd, round_label: roundLabel(rd), flow_key: flow.key, edges, rows, m: analyzeLine(rows, edges) });
+        });
+      });
+      return lines;
+    }
+    // 給 API 回傳用的產線摘要（拿掉內部欄位）
+    function lineSummary(ln) {
+      const { _rowWaitMs, station_stats, ...rest } = ln.m;
+      const ss = {};
+      Object.keys(station_stats).forEach(s => { const { _runMs, _waitMs, ...v } = station_stats[s]; ss[s] = v; });
+      return {
+        group_id: ln.group_id, round: ln.round, round_label: ln.round_label,
+        flow_key: ln.flow_key || "(無流程)", flow: ln.edges.map(([a, b]) => `${a}→${b || "終點"}`),
+        ...rest,
+        line_cycle_time_sec: rest.takt_sec,
+        station_stats: ss
+      };
+    }
+    // ==== CORE END ====
+
+    // ============================================================================
+    // 【三、多條參數化 API 管道定義（對應老師手繪圖 Api1, Api2, Api3, ApiFlow）】
+    // 學生端可直接呼叫這些函式並傳入變數，完全只讀取中繼庫 (ta1, ta2, ta3)
+    // ============================================================================
+
+    // 管道 1：單變數 Api1(group) ➔ 查某組整體統計與全部工站資料
+    function Api1(group = "G20") {
+      return queryRelayEvents({ group, station: "ALL", round: "ALL", channelName: "Api1(group)" });
+    }
+
+    // 管道 2：雙變數 Api2(group, station) ➔ 查某組 + 指定工站
+    function Api2(group = "G20", station = "ST01") {
+      return queryRelayEvents({ group, station, round: "ALL", channelName: "Api2(group, station)" });
+    }
+
+    // 管道 3：三變數 Api3(group, station, round) ➔ 查某組 + 指定工站 + 指定測試場次
+    function Api3(group = "G20", station = "ALL", round = "TEST2") {
+      return queryRelayEvents({ group, station, round, channelName: "Api3(group, station, round)" });
+    }
+
+    // 管道 4：網路圖專用 ApiFlow(group, round) ➔ 結合 ta1 + ta2 + ta3 輸出右圖的 Nodes 與 Edges
+    function ApiFlow(group = "G20", round = "TEST2") {
+      RelayDB.studentApiCallCount += 1;
+      updateRelayStatusUI();
+      return buildFlowModel(group, round);
+    }
+
+    // ApiFlow 與 Api1~3 共用：同一套流程、同一套燈號（改良版：兩邊的燈號、WIP 不會再互相矛盾）
+    function buildFlowModel(group = "G20", round = "TEST2") {
+      const targetGroup = group === "ALL" ? "G20" : group;
+      // 場次 ALL：網路圖用該組「最後一個有資料的場次」的流程
+      const groupRounds = roundsOfGroup(targetGroup);
+      const flowRound = round === "ALL" ? (groupRounds[groupRounds.length - 1] || "ALL") : round;
+      const flowKey = getRoundFlowKey(targetGroup, flowRound);
+
+      // 1. 流程：依老師的候選順序找（G23-T2 → G23-T1 → G23）；都沒有才用預設流程畫圖
+      const resolved = resolveFlow(targetGroup, flowRound);
+      let flowRows = resolved.rows;
+      let flowSource = resolved.key ? `station_flow：${resolved.key}` : "";
+      if (flowRows.length === 0) {
+        const activeStations = Array.from(new Set(
+          filterEventsFromTa1(targetGroup, "ALL", round).map(e => e.station_id).filter(Boolean)
+        )).sort((a, b) => a.localeCompare(b));
+
+        if (activeStations.length === 0 || activeStations.includes("ST09")) {
+          // 9 站標準雙層匯流順序圖
+          flowRows = [
+            { station_id: "ST01", next_station_id: "ST05" },
+            { station_id: "ST02", next_station_id: "ST05" },
+            { station_id: "ST03", next_station_id: "ST06" },
+            { station_id: "ST04", next_station_id: "ST06" },
+            { station_id: "ST05", next_station_id: "ST07" },
+            { station_id: "ST06", next_station_id: "ST07" },
+            { station_id: "ST07", next_station_id: "ST08" },
+            { station_id: "ST08", next_station_id: "ST09" }
+          ];
+          flowSource = "沒有設定流程 → 用預設 9 站流程畫圖";
+        } else {
+          // 若該組實際只有 3 站、5 站、7 站等其他站數，自動依實際工站串聯成對應站數
+          flowRows = [];
+          for (let i = 0; i < activeStations.length - 1; i++) {
+            flowRows.push({ station_id: activeStations[i], next_station_id: activeStations[i + 1] });
+          }
+          if (activeStations.length === 1) {
+            flowRows.push({ station_id: activeStations[0], next_station_id: "" });
+          }
+          flowSource = "沒有設定流程 → 依實際工站編號串聯畫圖";
+        }
+      }
+
+      // 收集所有節點與 Edges (from -> to)
+      const nodeSet = new Set();
+      const edges = [];
+      const nextMap = {};
+      const upstreamMap = {};
+
+      flowRows.forEach(r => {
+        const fromSt = (r.station_id || "").trim();
+        const toSt = (r.next_station_id || "").trim();
+        if (!fromSt) return;
+        nodeSet.add(fromSt);
+        if (toSt && toSt !== "END" && toSt !== "無") {
+          nodeSet.add(toSt);
+          if (!edges.some(e => e.from === fromSt && e.to === toSt)) edges.push({ from: fromSt, to: toSt });
+          if (!nextMap[fromSt]) nextMap[fromSt] = [];
+          if (!nextMap[fromSt].includes(toSt)) nextMap[fromSt].push(toSt);
+
+          if (!upstreamMap[toSt]) upstreamMap[toSt] = [];
+          if (!upstreamMap[toSt].includes(fromSt)) upstreamMap[toSt].push(fromSt);
+        }
+      });
+
+      // 4. 從 ta1 (event) 統計：用計算核心（同一組 + 同一場次為一條產線；ALL 場次 = 各場次合計）
+      const lines = buildLines(targetGroup, round);
+      const stStats = {};
+      lines.forEach(ln => {
+        Object.entries(ln.m.station_stats).forEach(([st, s]) => {
+          if (!stStats[st]) stStats[st] = { count: 0, runMs: 0 };
+          stStats[st].count += s.qty;
+          stStats[st].runMs += s._runMs;
+        });
+      });
+      // 有紀錄但流程裡沒有的工站，也畫出來
+      Object.keys(stStats).forEach(st => nodeSet.add(st));
+      const allStations = Array.from(nodeSet).sort((a, b) => a.localeCompare(b));
+      allStations.forEach(st => { if (!stStats[st]) stStats[st] = { count: 0, runMs: 0 }; });
+
+      // 2. 計算拓樸層級 (column_level)：無前置站者為第 0 欄，其餘為 max(前置站層級) + 1
+      const levelMap = {};
+      allStations.forEach(st => { levelMap[st] = 0; });
+      for (let pass = 0; pass < allStations.length; pass++) {
+        edges.forEach(e => {
+          if ((levelMap[e.from] + 1) > (levelMap[e.to] || 0)) {
+            levelMap[e.to] = levelMap[e.from] + 1;
+          }
+        });
+      }
+
+      // 3. 從 ta2 (station_wip) 取出各站的 output_wip 與 WIP 上限 (*_LIMIT)
+      let wipRows = RelayDB.ta2_station_wip.filter(r => r.group_id === flowKey);
+      if (wipRows.length === 0) {
+        wipRows = RelayDB.ta2_station_wip.filter(r => r.group_id === targetGroup);
+      }
+      const wipLookup = {};
+      const limitLookup = {};
+      wipRows.forEach(r => {
+        const sid = (r.station_id || "").trim();
+        if (sid.endsWith("_LIMIT")) {
+          const baseSt = sid.replace("_LIMIT", "");
+          limitLookup[baseSt] = Number(r.input_wip) || 2;
+        } else {
+          wipLookup[sid] = {
+            input_wip: Number(r.input_wip) || 0,
+            output_wip: Number(r.output_wip) || 0
+          };
+        }
+      });
+
+      // 瓶頸：平均 CT 最大（用沒有四捨五入的值比，避免四捨五入後同分選錯站）
+      let bottleneckStation = null;
+      allStations.forEach(st => {
+        const s = stStats[st];
+        if (!s.count) return;
+        const b = bottleneckStation ? stStats[bottleneckStation] : null;
+        if (!b || s.runMs * b.count > b.runMs * s.count) bottleneckStation = st;
+      });
+      allStations.forEach(st => {
+        const s = stStats[st];
+        s.avgSec = s.count > 0 ? r1ms(s.runMs, s.count) : 0;
+      });
+      const maxAvgCt = bottleneckStation ? stStats[bottleneckStation].avgSec : 0;
+
+      // 5. 組裝每個節點 (Nodes) 的顯示文字與燈號狀態（完全對齊右圖格式）
+      const nodes = allStations.map(st => {
+        const upstreams = upstreamMap[st] || [];
+        const nexts = nextMap[st] || [];
+        const isStart = upstreams.length === 0;
+        const isTerminal = nexts.length === 0;
+        const count = stStats[st] ? stStats[st].count : 0;
+        const avgCt = stStats[st] ? stStats[st].avgSec : 0;
+        const isBottleneck = (st === bottleneckStation && maxAvgCt > 0);
+
+        // 下游站的 WIP 上限（若無設定預設為 2，或讀取下一站之 *_LIMIT）
+        const nextSt = nexts[0] || null;
+        const downstreamLimit = nextSt ? (limitLookup[nextSt] || 2) : (limitLookup[st] || 2);
+        const selfLimit = limitLookup[st] || 2;
+
+        // 本站送往下一站的待領數：優先讀取 station_wip.output_wip，若無則用前後站完工數差推算
+        let outWip = 0;
+        if (wipLookup[st] !== undefined) {
+          outWip = wipLookup[st].output_wip;
+        } else if (nextSt && stStats[nextSt]) {
+          outWip = Math.max(0, count - stStats[nextSt].count);
+        }
+
+        // 若為下游站（或匯流站如 ST03）：可開工套數 = 所有前置站送來待領數的最小值 (齊套原則 min)
+        let kitReadySets = 0;
+        if (!isStart) {
+          const upstreamOutputs = upstreams.map(upSt => {
+            if (wipLookup[upSt] !== undefined) return wipLookup[upSt].output_wip;
+            const upCount = stStats[upSt] ? stStats[upSt].count : 0;
+            return Math.max(0, upCount - count);
+          });
+          kitReadySets = upstreamOutputs.length > 0 ? Math.min(...upstreamOutputs) : 0;
+        }
+
+        // 判定燈號顏色：紅燈(瓶頸) > 紫燈(站後待領達上限) > 黃燈(非起始站且可開工=0) > 綠燈(正常)
+        let statusColor = "GREEN";
+        if (isBottleneck) {
+          statusColor = "RED";
+        } else if (!isTerminal && outWip >= downstreamLimit) {
+          statusColor = "PURPLE";
+        } else if (!isStart && kitReadySets === 0) {
+          statusColor = "YELLOW";
+        }
+
+        const isMultiMerge = upstreams.length > 1;
+        const unitLabel = isMultiMerge ? "套" : "件";
+        const line1Text = isStart
+          ? "📥 原料/零件: 無限供應 (無WIP限制)"
+          : `📥 半成品: ${kitReadySets}${unitLabel} ➔ 可開工: ${kitReadySets}${unitLabel}`;
+
+        const line2Text = isTerminal
+          ? `🏁 總成品: ${count} 件`
+          : `📤 累計完工: ${count} 件 (站後待領: ${outWip} 件)`;
+
+        const badgeText = isBottleneck ? `🚨 瓶頸站 (CT: ${avgCt}s)` : "";
+
+        return {
+          id: st,
+          column_level: levelMap[st] || 0,
+          is_start: isStart,
+          is_terminal: isTerminal,
+          upstream_ids: upstreams,
+          next_ids: nexts,
+          completed_count: count,
+          avg_cycle_sec: avgCt,
+          is_bottleneck: isBottleneck,
+          output_wip: outWip,
+          kit_ready_sets: isStart ? null : kitReadySets,
+          wip_limit: isStart ? downstreamLimit : selfLimit,
+          downstream_limit: downstreamLimit,
+          status_color: statusColor,
+          line1_text: line1Text,
+          line2_text: line2Text,
+          badge_text: badgeText
+        };
+      });
+
+      return {
+        api_channel: "ApiFlow(group, round)",
+        group_id: targetGroup,
+        round_filter: round,
+        flow_table_key: resolved.key || flowKey,
+        flow_source: flowSource,
+        bottleneck_station: bottleneckStation || "--",
+        bottleneck_avg_sec: maxAvgCt,
+        lines_summary: lines.map(lineSummary),
+        nodes,
+        edges,
+        events: lines.flatMap(ln => ln.rows).sort((a, b) => (toMs(a.start_time) ?? 0) - (toMs(b.start_time) ?? 0))
+      };
+    }
+
+    // 共用中繼庫查詢核心（Api1 / Api2 / Api3）
+    function queryRelayEvents({ group, station, round, channelName }) {
+      RelayDB.studentApiCallCount += 1;
+      updateRelayStatusUI();
+      return buildQuery({ group, station, round, channelName });
+    }
+
+    function buildQuery({ group, station, round, channelName }) {
+      // 1. 先以「整條產線」（組別 + 場次）計算，再依工站篩選 → 等待時間、瓶頸跟老師監控中心一致
+      const lines = buildLines(group, round);
+
+      // 2. 各站彙總（場次 ALL 時，各場次分開算等待，再合計）
+      const agg = {};
+      const enriched = [];
+      lines.forEach(ln => {
+        Object.entries(ln.m.station_stats).forEach(([st, s]) => {
+          if (!agg[st]) agg[st] = { count: 0, runMs: 0, waitMs: 0, durations: [] };
+          agg[st].count += s.qty;
+          agg[st].runMs += s._runMs;
+          agg[st].waitMs += s._waitMs;
+        });
+        ln.rows.forEach(r => {
+          const st = String(r.station_id || "(未知)").trim();
+          agg[st].durations.push(Number(r.duration_sec) || 0);
+          if (station !== "ALL" && st !== station) return;
+          const stSp = splitToTaiwanDateAndTime(r.start_time);
+          const fnSp = splitToTaiwanDateAndTime(r.finish_time);
+          enriched.push({
+            id: r.id,
+            group_id: r.group_id,
+            station_id: st,
+            product_id: r.product_id,
+            round: ln.round,
+            start_date: r.start_date || stSp.date,
+            start_clock: r.start_clock || stSp.clock,
+            finish_date: r.finish_date || fnSp.date,
+            finish_clock: r.finish_clock || fnSp.clock,
+            start_time: r.start_time,
+            finish_time: r.finish_time,
+            duration_sec: Number(r.duration_sec) || 0,
+            wait_sec: r1ms(ln.m._rowWaitMs.get(r) || 0)
+          });
+        });
+      });
+      enriched.sort((a, b) => (toMs(a.start_time) ?? 0) - (toMs(b.start_time) ?? 0));
+
+      // 瓶頸：用全部工站比（就算 Api2 只查一站，也標出整條線的瓶頸是不是這站）
+      const allSt = Object.keys(agg).sort((a, b) => a.localeCompare(b));
+      let bottleneckStation = null;
+      allSt.forEach(st => {
+        const s = agg[st];
+        if (!s.count) return;
+        const b = bottleneckStation ? agg[bottleneckStation] : null;
+        if (!b || s.runMs * b.count > b.runMs * s.count) bottleneckStation = st;
+      });
+      const maxAvgCycle = bottleneckStation ? r1ms(agg[bottleneckStation].runMs, agg[bottleneckStation].count) : 0;
+
+      // 3. 燈號與 WIP：跟 ApiFlow 網路圖用同一套流程計算
+      const flowModel = group === "ALL" ? null : buildFlowModel(group, round);
+      const nodeOf = {};
+      (flowModel ? flowModel.nodes : []).forEach(n => { nodeOf[n.id] = n; });
+      const single = lines.length === 1 ? lines[0] : null;
+
+      const stKeysSorted = allSt.filter(st => station === "ALL" || st === station);
+      const stationsSummary = stKeysSorted.map(st => {
+        const s = agg[st];
+        const durations = s.durations.filter(n => n > 0).sort((a, b) => a - b);
+        const count = s.count;
+        const mean = count > 0 ? s.runMs / count / 1000 : 0;
+        const min = durations.length > 0 ? durations[0] : 0;
+        const max = durations.length > 0 ? durations[durations.length - 1] : 0;
+        const variance = durations.length > 0
+          ? durations.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / durations.length
+          : 0;
+        const std = Number(Math.sqrt(variance).toFixed(2));
+        const p90Idx = durations.length > 0 ? Math.min(durations.length - 1, Math.floor(durations.length * 0.9)) : 0;
+        const p90 = durations.length > 0 ? durations[p90Idx] : 0;
+        const ls = single ? single.m.station_stats[st] : null;
+        const node = nodeOf[st];
+
+        let light = "GREEN", label = "🟢 正常流暢";
+        if (!node) {
+          label = group === "ALL" ? "（全班彙總，不判斷燈號）" : "🟢 正常流暢";
+        } else if (!node.is_terminal && node.output_wip >= node.downstream_limit) {
+          light = "PURPLE";
+          label = `🟣 滿載阻塞 (送往下一站待領 ${node.output_wip}/${node.downstream_limit})`;
+        } else if (!node.is_start && node.kit_ready_sets === 0) {
+          light = "YELLOW";
+          label = "🟡 飢餓缺料 (站前可開工 0)";
+        }
+
+        return {
+          station_id: st,
+          completed_count: count,
+          avg_cycle_sec: count > 0 ? r1ms(s.runMs, count) : 0,
+          min_cycle_sec: min,
+          max_cycle_sec: max,
+          std_cycle_sec: std,
+          p90_cycle_sec: p90,
+          total_run_sec: r1ms(s.runMs),
+          wait_sec: r1ms(s.waitMs),
+          avg_wait_sec: count > 0 ? r1ms(s.waitMs, count) : 0,
+          util_pct: s.runMs + s.waitMs > 0 ? r1ms(s.runMs * 100 * 1000, s.runMs + s.waitMs) : 0,
+          pct_of_line: ls ? ls.pct_of_line : null,     // 佔產線 Cycle Time %（只在單一場次時有）
+          vs_line_sec: ls ? ls.vs_line_sec : null,
+          estimated_wip_in: node ? (node.is_start ? null : node.kit_ready_sets) : null,
+          estimated_wip_out: node ? node.output_wip : 0,
+          wip_limit: node ? node.downstream_limit : 2,
+          is_start: node ? node.is_start : false,
+          is_terminal: node ? node.is_terminal : false,
+          is_bottleneck: st === bottleneckStation && maxAvgCycle > 0,
+          light_status: light,
+          light_label: label
+        };
+      });
+
+      const summaries = lines.map(lineSummary);
+      return {
+        api_channel: channelName,
+        query_params: { group, station, round },
+        total_records: enriched.length,
+        bottleneck_station: bottleneckStation || "--",
+        bottleneck_avg_sec: maxAvgCycle,
+        // 產線指標：單一組別 + 單一場次時才有（產出組數、產線 Cycle Time、平衡率…）
+        line_metrics: single ? summaries[0] : null,
+        // 每一條產線（組別 + 場次）各自的指標；場次選 ALL 時會有好幾條
+        lines_summary: summaries,
+        stations_summary: stationsSummary,
+        data: enriched
+      };
+    }
+
+    // 管道 5：跨組比對 ApiCompare(groups, station, round) ➔ 同頁並排比對多組績效、9站熱力圖與群組長條圖
+    function ApiCompare(groups = ["G23", "G24", "G25"], station = "ALL", round = "ALL") {
+      const targetGroups = Array.isArray(groups) && groups.length > 0 ? groups : ["G23", "G24", "G25"];
+      const groupsResult = {};
+      const allStationsSet = new Set(["ST01","ST02","ST03","ST04","ST05","ST06","ST07","ST08","ST09"]);
+      let combinedEvents = [];
+
+      targetGroups.forEach(g => {
+        const fullGroupRes = buildQuery({
+          group: g,
+          station: "ALL",
+          round,
+          channelName: `ApiCompare_Sub(${g})`
+        });
+
+        fullGroupRes.stations_summary.forEach(s => allStationsSet.add(s.station_id));
+        const bottleObj = fullGroupRes.stations_summary.find(s => s.is_bottleneck) || null;
+        const avgAllStations = fullGroupRes.stations_summary.length > 0
+          ? Number((fullGroupRes.stations_summary.reduce((a, b) => a + b.avg_cycle_sec, 0) / fullGroupRes.stations_summary.length).toFixed(2))
+          : 0;
+        // 產出：依流程的終點站（單一場次）；場次 ALL = 各場次產出合計
+        const ls = fullGroupRes.lines_summary;
+        const lm = fullGroupRes.line_metrics;
+        const outputSets = ls.reduce((a, l) => a + l.output_sets, 0);
+        const outputStation = lm ? lm.output_station : (ls.length ? "各場次合計" : "--");
+        const reached = ls.length > 0 && ls.every(l => l.terminal_reached);
+
+        const filteredForStation = station === "ALL"
+          ? fullGroupRes.data
+          : fullGroupRes.data.filter(d => d.station_id === station);
+
+        combinedEvents = combinedEvents.concat(filteredForStation);
+
+        groupsResult[g] = {
+          group_id: g,
+          total_records: fullGroupRes.total_records,
+          final_output_sets: outputSets,
+          final_station_id: outputStation,
+          terminal_reached: reached,
+          line_cycle_time_sec: lm ? lm.takt_sec : null,          // 產線 Cycle Time（單一場次時）
+          long_span: lm ? lm.long_span : false,
+          balance_pct: lm ? lm.balance_pct : null,
+          overall_avg_ct_sec: avgAllStations,
+          bottleneck_station: fullGroupRes.bottleneck_station,
+          bottleneck_avg_sec: fullGroupRes.bottleneck_avg_sec,
+          bottleneck_p90_sec: bottleObj ? bottleObj.p90_cycle_sec : 0,
+          bottleneck_std_sec: bottleObj ? bottleObj.std_cycle_sec : 0,
+          lines_summary: ls,
+          stations_summary: fullGroupRes.stations_summary,
+          station_filtered_data: filteredForStation
+        };
+      });
+
+      RelayDB.studentApiCallCount += 1;
+      updateRelayStatusUI();
+
+      return {
+        api_channel: "ApiCompare(groups, station, round)",
+        query_params: { groups: targetGroups, station, round },
+        compared_group_count: targetGroups.length,
+        stations_axis: Array.from(allStationsSet).sort((a, b) => a.localeCompare(b)),
+        groups: groupsResult,
+        data: combinedEvents
+      };
+    }
+
+    // 初始化管道 5 的多組勾選框 (G01 ~ G25，預設勾選 G23, G24, G25)
+    let selectedCompareGroups = new Set(["G23", "G24", "G25"]);
+
+    function renderCompareCheckboxes() {
+      const wrap = document.getElementById("compareCheckboxesWrap");
+      if (!wrap) return;
+      const activeGroupsInDb = new Set(RelayDB.ta1_events.map(r => r.group_id));
+      let html = "";
+      for (let i = 1; i <= 25; i++) {
+        const gid = "G" + String(i).padStart(2, "0");
+        const isChecked = selectedCompareGroups.has(gid);
+        const hasData = activeGroupsInDb.has(gid);
+        html += `
+          <label class="grp-chk-label ${isChecked ? 'checked' : ''} ${hasData ? 'has-data' : ''}" title="${hasData ? '此組有生產資料' : '尚無資料'}">
+            <input type="checkbox" value="${gid}" ${isChecked ? 'checked' : ''} onchange="onToggleCompareGroup('${gid}', this.checked)" style="margin:0;" />
+            ${gid}${hasData ? '●' : ''}
+          </label>
+        `;
+      }
+      wrap.innerHTML = html;
+    }
+
+    function onToggleCompareGroup(gid, checked) {
+      if (checked) {
+        selectedCompareGroups.add(gid);
+      } else if (selectedCompareGroups.size > 1) {
+        selectedCompareGroups.delete(gid);
+      }
+      renderCompareCheckboxes();
+      executeStudentApiQuery();
+    }
+
+    function quickSelectCompareGroups(mode) {
+      if (mode === "G23_G25") {
+        selectedCompareGroups = new Set(["G23", "G24", "G25"]);
+      } else if (mode === "ACTIVE") {
+        const active = Array.from(new Set(RelayDB.ta1_events.map(r => r.group_id).filter(Boolean))).sort();
+        selectedCompareGroups = new Set(active.length > 0 ? active : ["G23", "G24", "G25"]);
+      }
+      renderCompareCheckboxes();
+      executeStudentApiQuery();
+    }
+
+    // 依組別、工站、場次篩選完工紀錄（改良版：只算 COMPLETED；場次支援 TEST1~TEST10 與 PROD）
+    function filterEventsFromTa1(group, station, round) {
+      return RelayDB.ta1_events.filter(r => {
+        if (!isCompleted(r)) return false;
+        if (group !== "ALL" && String(r.group_id || "").trim() !== group) return false;
+        if (station !== "ALL" && String(r.station_id || "").trim() !== station) return false;
+        if (round !== "ALL" && roundOf(r.product_id) !== round) return false;
+        return true;
+      });
+    }
+
+    function getRoundFlowKey(group, round) {
+      if (round === "PROD") return `${group}-OFFICIAL`;
+      if (/^TEST\d+$/.test(round)) return `${group}-T${round.slice(4)}`;
+      return group;
+    }
+
+    // 場次下拉選單：固定有 TEST1~3、PROD，資料裡出現其他場次（例如 TEST4）時自動加上
+    function refreshRoundOptions() {
+      const sel = document.getElementById("paramRound");
+      if (!sel) return;
+      const set = new Set(["TEST1", "TEST2", "TEST3", "PROD"]);
+      RelayDB.ta1_events.forEach(r => { if (isCompleted(r)) set.add(roundOf(r.product_id)); });
+      const rounds = [...set].sort((a, b) => roundSortKey(a) - roundSortKey(b));
+      const want = ["ALL", ...rounds].join(",");
+      if (sel.dataset.rounds === want) return;
+      const cur = sel.value || "ALL";
+      sel.innerHTML = `<option value="ALL">ALL (全部場次，各場次分開算再合計)</option>` +
+        rounds.map(r => `<option value="${r}">${r} (${roundLabel(r)})</option>`).join("");
+      sel.value = rounds.includes(cur) ? cur : "ALL";
+      sel.dataset.rounds = want;
+    }
+
+    // 管道 6：WIP 時間軸與缺料分析專用 ApiWip(group, round, buffer)
+    // 優先讀取 ta4_production_run / ta5_wip_timeline，若無則自動由 ta1_events + ta3_station_flow 即時重建完整 WIP 時間軸與 Starved 缺料分析
+    const WIP_IDLE_PAUSE_LIMIT_MS = 600 * 1000; // 超過 600 秒中場休息/跨堂空窗自動扣除
+
+    function ApiWip(group = "G23", round = "ALL", buffer = "TOTAL") {
+      RelayDB.studentApiCallCount += 1;
+      updateRelayStatusUI();
+
+      const targetGroup = group === "ALL" ? "G23" : group;
+      const flowKey = getRoundFlowKey(targetGroup, round);
+      const flowInfo = ApiFlow(targetGroup, round);
+      RelayDB.studentApiCallCount = Math.max(1, RelayDB.studentApiCallCount - 1);
+
+      const flowSnapshot = (flowInfo.edges || []).map(e => ({
+        station_id: e.from,
+        station_name: e.from,
+        next_station_id: e.to,
+        line_type: "MAIN"
+      }));
+      const edges = [...new Set(flowSnapshot.filter(f => f.next_station_id).map(f => `${f.station_id}_${f.next_station_id}`))];
+
+      const roundEvents = filterEventsFromTa1(targetGroup, "ALL", round)
+        .filter(e => e.start_time)
+        .slice()
+        .sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time));
+
+      if (roundEvents.length === 0) {
+        return {
+          api_channel: "ApiWip(group, round, buffer)",
+          endpoint: `/api/v1/wip?group=${targetGroup}&round=${round}&buffer=${buffer}`,
+          group_id: targetGroup,
+          round_filter: round,
+          flow_key: flowKey,
+          buffer_filter: buffer,
+          valid: false,
+          summary: {
+            avg_total_wip: 0,
+            max_total_wip: 0,
+            starved_total_sec: 0,
+            starved_avg_sec: 0,
+            active_duration_sec: 0,
+            total_wip_events: 0,
+            total_process_events: 0
+          },
+          per_buffer_stats: edges.map(id => ({ buffer_id: id, current_wip: 0, avg_wip: 0, max_wip: 0 })),
+          starved_stats: [],
+          step_chart_points: [],
+          wip_timeline_rows: [],
+          data: []
+        };
+      }
+
+      const startTimes = roundEvents.map(e => Date.parse(e.start_time)).filter(Number.isFinite);
+      const endTimes = roundEvents.map(e => Date.parse(e.finish_time || e.start_time)).filter(Number.isFinite);
+      const startMs = Math.min(...startTimes);
+      const endMs = Math.max(...endTimes);
+
+      const nextMap = {};
+      const predsMap = {};
+      flowSnapshot.forEach(f => {
+        const u = f.station_id;
+        const v = f.next_station_id;
+        if (u && v) {
+          if (!nextMap[u]) nextMap[u] = [];
+          nextMap[u].push(v);
+          if (!predsMap[v]) predsMap[v] = [];
+          predsMap[v].push(u);
+        }
+      });
+
+      // 由歷史 event 與初始預設半成品套數推算每一次 INIT (初始備料)、+1 (上游完工) 與 -1 (下游開工)
+      // 當下游工站一開始預設半成品為 K 組 (可開工套數) 時，每一個前置工站 Buffer (p -> st) 都放入 K 件，
+      // 該下游站帶來的初始總 WIP = 前置工站數 × 可開工套數 (例如 2 個前置工站 × 2 組 = 4 件)！
+      const rawDeltas = [];
+      const allRaw = JSON.parse(localStorage.getItem("ie_chair_group_station_raw") || "{}");
+      const groupRaw = allRaw[flowKey] || allRaw[targetGroup] || {};
+      Object.keys(predsMap).forEach(st => {
+        let subInit = Number(groupRaw[st]?.subInit || 0);
+        const stFirstEv = roundEvents.find(e => (e.station_id || "").trim() === st && e.start_time);
+        if (stFirstEv && stFirstEv.wip_before_start != null) {
+          const wb = Number(stFirstEv.wip_before_start);
+          if (Number.isFinite(wb) && wb > 0 && wb < 900) {
+            const firstStartMs = Date.parse(stFirstEv.start_time);
+            const minPredDoneBeforeFirst = Math.min(...predsMap[st].map(p =>
+              roundEvents.filter(e => (e.station_id || "").trim() === p && e.finish_time && Date.parse(e.finish_time) <= firstStartMs).length
+            ));
+            const inferredInitSets = Math.max(0, wb - (Number.isFinite(minPredDoneBeforeFirst) ? minPredDoneBeforeFirst : 0));
+            if (inferredInitSets > subInit) subInit = inferredInitSets;
+          }
+        }
+        if (subInit > 0) {
+          predsMap[st].forEach(p => {
+            rawDeltas.push({
+              t: startMs - 1000,
+              event_time: new Date(startMs - 1000).toISOString(),
+              buffer_id: `${p}_${st}`,
+              station_id: st,
+              action: "INIT",
+              delta: subInit,
+              event_id: null
+            });
+          });
+        }
+      });
+
+      roundEvents.forEach(ev => {
+        const st = (ev.station_id || "").trim();
+        if (!st) return;
+        if (ev.start_time && predsMap[st] && predsMap[st].length) {
+          const tMs = Date.parse(ev.start_time);
+          if (Number.isFinite(tMs)) {
+            predsMap[st].forEach(p => {
+              rawDeltas.push({
+                t: tMs,
+                event_time: ev.start_time,
+                buffer_id: `${p}_${st}`,
+                station_id: st,
+                action: "START_CONSUME",
+                delta: -1,
+                event_id: ev.id || null
+              });
+            });
+          }
+        }
+        if (ev.finish_time && nextMap[st] && nextMap[st].length) {
+          const tMs = Date.parse(ev.finish_time);
+          if (Number.isFinite(tMs)) {
+            nextMap[st].forEach(nxt => {
+              rawDeltas.push({
+                t: tMs,
+                event_time: ev.finish_time,
+                buffer_id: `${st}_${nxt}`,
+                station_id: st,
+                action: "FINISH_PRODUCE",
+                delta: 1,
+                event_id: ev.id || null
+              });
+            });
+          }
+        }
+      });
+
+      rawDeltas.sort((a, b) => a.t - b.t || (b.delta - a.delta));
+      const runningBalance = {};
+      const changesSorted = rawDeltas.map((d, idx) => {
+        const cur = runningBalance[d.buffer_id] || 0;
+        const after = Math.max(0, cur + d.delta);
+        const actualDelta = after - cur;
+        runningBalance[d.buffer_id] = after;
+        const evSp = splitToTaiwanDateAndTime(d.event_time);
+        return {
+          id: idx + 1,
+          group_id: targetGroup,
+          flow_key: flowKey,
+          buffer_id: d.buffer_id,
+          station_id: d.station_id,
+          action: d.action,
+          delta: actualDelta,
+          wip_after: after,
+          event_id: d.event_id,
+          event_date: evSp.date,
+          event_clock: evSp.clock,
+          event_time: d.event_time
+        };
+      });
+
+      // 時間加權積分計算 (自動扣除 >600 秒中場停機空窗)
+      const byId = {}, balance = {}, areas = {}, maxima = {}, history = {};
+      const edgeSet = new Set(edges);
+      edges.forEach(id => { balance[id] = 0; areas[id] = 0; maxima[id] = 0; history[id] = []; });
+      // 僅將嚴格早於 startMs (t < startMs) 的 INIT 初始備料套入起點，
+      // 讓 0s 起點先顯示初始預設總 WIP (前置工站數 × 可開工套數，例如 2×2=4 件)，再顯示首筆開工扣減
+      changesSorted.filter(x => Date.parse(x.event_time) < startMs).forEach(x => {
+        byId[x.buffer_id] = x.wip_after;
+        if (edgeSet.has(x.buffer_id)) balance[x.buffer_id] = x.wip_after;
+      });
+
+      let total = Object.values(balance).reduce((a, b) => a + b, 0);
+      let totalArea = 0, maxTotal = total, last = startMs, activeDurationMs = 0;
+      const totalHistory = [{ t: startMs, y: total }];
+      edges.forEach(id => { maxima[id] = balance[id]; history[id].push({ t: startMs, y: balance[id] }); });
+
+      let index = 0;
+      while (index < changesSorted.length && Date.parse(changesSorted[index].event_time) < startMs) index++;
+      while (index < changesSorted.length) {
+        const t = Date.parse(changesSorted[index].event_time);
+        if (t > endMs) break;
+        const rawDt = Math.max(0, t - last);
+        const dt = rawDt > WIP_IDLE_PAUSE_LIMIT_MS ? 0 : rawDt;
+        activeDurationMs += dt;
+        edges.forEach(id => areas[id] += balance[id] * dt);
+        totalArea += total * dt;
+        while (index < changesSorted.length && Date.parse(changesSorted[index].event_time) === t) {
+          const ev = changesSorted[index++];
+          byId[ev.buffer_id] = ev.wip_after;
+          if (edgeSet.has(ev.buffer_id)) balance[ev.buffer_id] = ev.wip_after;
+        }
+        total = Object.values(balance).reduce((a, b) => a + b, 0);
+        edges.forEach(id => { maxima[id] = Math.max(maxima[id], balance[id]); history[id].push({ t, y: balance[id] }); });
+        maxTotal = Math.max(maxTotal, total);
+        totalHistory.push({ t, y: total });
+        last = t;
+      }
+      const rawRest = Math.max(0, endMs - last);
+      const rest = rawRest > WIP_IDLE_PAUSE_LIMIT_MS ? 0 : rawRest;
+      activeDurationMs += rest;
+      edges.forEach(id => { areas[id] += balance[id] * rest; history[id].push({ t: endMs, y: balance[id] }); });
+      totalArea += total * rest;
+      totalHistory.push({ t: endMs, y: total });
+      const T = Math.max(1, activeDurationMs);
+
+      // Starved (缺料乾等) 與 Ready (齊套待開工) 計算
+      const stations = [...new Set(flowSnapshot.map(f => f.station_id).concat(flowSnapshot.map(f => f.next_station_id)).filter(Boolean))].sort();
+      const starvedStats = [];
+      let starvedTotalMs = 0, starvedCountTotal = 0, readyTotalMs = 0;
+      for (const st of stations) {
+        const pres = predsMap[st] || [];
+        if (!pres.length) continue;
+        const stationEvents = roundEvents.filter(e => e.station_id === st && e.start_time)
+          .sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time));
+        const tracked = pres.map(p => `${p}_${st}`);
+        const predEvents = roundEvents.filter(e => pres.includes(e.station_id) && e.start_time);
+        const predEarliestStart = predEvents.length
+          ? Math.min(...predEvents.map(e => Date.parse(e.start_time)).filter(Number.isFinite))
+          : startMs;
+        const gapList = [];
+        let gapStart = Math.max(startMs, predEarliestStart);
+        for (const ev of stationEvents) {
+          const s = Date.parse(ev.start_time);
+          if (s > gapStart && s <= endMs) gapList.push([gapStart, s]);
+          if (ev.finish_time) gapStart = Math.max(s, Date.parse(ev.finish_time));
+          else gapStart = Infinity;
+        }
+        let starveMs = 0, readyMs = 0, count = 0;
+        for (const [a, b] of gapList) {
+          const cur = {};
+          tracked.forEach(k => cur[k] = 0);
+          changesSorted.forEach(c => {
+            const t = Date.parse(c.event_time);
+            if (t <= a && tracked.includes(c.buffer_id)) cur[c.buffer_id] = c.wip_after;
+          });
+          const ready = () => pres.every(p => cur[`${p}_${st}`] > 0);
+          let previous = a, isMissing = !ready(), episodeAccMs = 0;
+          const scoped = changesSorted.filter(c => tracked.includes(c.buffer_id)
+            && Date.parse(c.event_time) > a && Date.parse(c.event_time) < b);
+          for (let k = 0; k < scoped.length;) {
+            const t = Date.parse(scoped[k].event_time);
+            const segDt = (t - previous) > WIP_IDLE_PAUSE_LIMIT_MS ? 0 : Math.max(0, t - previous);
+            if (isMissing) { starveMs += segDt; episodeAccMs += segDt; } else readyMs += segDt;
+            while (k < scoped.length && Date.parse(scoped[k].event_time) === t) {
+              const ch = scoped[k++];
+              cur[ch.buffer_id] = ch.wip_after;
+            }
+            const nowMissing = !ready();
+            if (isMissing && !nowMissing) {
+              if (episodeAccMs > 0) count++;
+              episodeAccMs = 0;
+            } else if (!isMissing && nowMissing) {
+              episodeAccMs = 0;
+            }
+            isMissing = nowMissing;
+            previous = t;
+          }
+          const tailDt = (b - previous) > WIP_IDLE_PAUSE_LIMIT_MS ? 0 : Math.max(0, b - previous);
+          if (isMissing) {
+            starveMs += tailDt;
+            episodeAccMs += tailDt;
+            if (episodeAccMs > 0) count++;
+          } else {
+            readyMs += tailDt;
+          }
+        }
+        starvedTotalMs += starveMs;
+        starvedCountTotal += count;
+        readyTotalMs += readyMs;
+        starvedStats.push({
+          station_id: st,
+          starved_count: count,
+          starved_total_sec: Number((starveMs / 1000).toFixed(1)),
+          starved_avg_sec: Number((count ? (starveMs / count) / 1000 : 0).toFixed(1)),
+          ready_total_sec: Number((readyMs / 1000).toFixed(1))
+        });
+      }
+
+      const perBufferStats = edges.map(id => ({
+        buffer_id: id,
+        current_wip: balance[id],
+        avg_wip: Number((areas[id] / T).toFixed(2)),
+        max_wip: maxima[id]
+      }));
+
+      // 整理每個時間點的觸發原因，並把所有加工紀錄 (roundEvents) 的開工與完工時刻也合併進座標點，讓每筆新數據都在圖上顯示
+      const selectedBuffer = (buffer && buffer !== "TOTAL" && history[buffer]) ? buffer : "TOTAL";
+      const targetHistory = selectedBuffer === "TOTAL" ? totalHistory : (history[selectedBuffer] || []);
+      const changesByTime = {};
+      changesSorted.forEach(ch => {
+        if (selectedBuffer !== "TOTAL" && ch.buffer_id !== selectedBuffer) return;
+        const tMs = Date.parse(ch.event_time);
+        if (!Number.isFinite(tMs)) return;
+        if (!changesByTime[tMs]) changesByTime[tMs] = [];
+        const actLabel = ch.action === "FINISH_PRODUCE"
+          ? `${ch.station_id} 完工送出 (+${ch.delta} ➔ ${ch.buffer_id})`
+          : `${ch.station_id} 開工領用 (${ch.delta} 自 ${ch.buffer_id})`;
+        if (!changesByTime[tMs].includes(actLabel)) changesByTime[tMs].push(actLabel);
+      });
+
+      const extraEventTimes = new Set();
+      roundEvents.forEach(ev => {
+        const st = (ev.station_id || "").trim();
+        const pid = ev.product_id || "";
+        if (selectedBuffer !== "TOTAL") {
+          const [u, v] = selectedBuffer.split("_");
+          if (st !== u && st !== v) return;
+        }
+        if (ev.start_time) {
+          const sMs = Date.parse(ev.start_time);
+          if (Number.isFinite(sMs) && sMs >= startMs && sMs <= endMs) {
+            extraEventTimes.add(sMs);
+            if (!changesByTime[sMs]) changesByTime[sMs] = [];
+            const lbl = `${st} 開工 (${pid})`;
+            if (!changesByTime[sMs].some(x => x.includes(`${st} 開工`))) changesByTime[sMs].push(lbl);
+          }
+        }
+        if (ev.finish_time) {
+          const fMs = Date.parse(ev.finish_time);
+          if (Number.isFinite(fMs) && fMs >= startMs && fMs <= endMs) {
+            extraEventTimes.add(fMs);
+            if (!changesByTime[fMs]) changesByTime[fMs] = [];
+            const lbl = `${st} 完工 (${pid})`;
+            if (!changesByTime[fMs].some(x => x.includes(`${st} 完工`))) changesByTime[fMs].push(lbl);
+          }
+        }
+      });
+
+      const baseKeys = new Set(targetHistory.map(r => r.t));
+      const extraOnly = [...extraEventTimes].filter(t => !baseKeys.has(t)).sort((a, b) => a - b);
+      const mergedHistory = [];
+      let eIdx = 0, curY = targetHistory[0]?.y || 0;
+      for (let i = 0; i < targetHistory.length; i++) {
+        const r = targetHistory[i];
+        while (eIdx < extraOnly.length && extraOnly[eIdx] < r.t) {
+          mergedHistory.push({ t: extraOnly[eIdx++], y: curY });
+        }
+        curY = r.y;
+        const isInitPoint = (i === 0 && i + 1 < targetHistory.length && targetHistory[i + 1].t === r.t);
+        mergedHistory.push({ t: r.t, y: r.y, isInitPoint });
+      }
+      while (eIdx < extraOnly.length) {
+        mergedHistory.push({ t: extraOnly[eIdx++], y: curY });
+      }
+
+      const stepChartPoints = mergedHistory.map((pt, idx) => {
+        const nextT = idx < mergedHistory.length - 1 ? mergedHistory[idx + 1].t : pt.t;
+        const d = new Date(pt.t);
+        const clockStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+        const triggerText = pt.isInitPoint
+          ? `場次初始預設 WIP（前置工站數 × 可開工套數 = ${pt.y} 件）`
+          : ((changesByTime[pt.t] || []).slice(0, 5).join("；") || (idx === 0 ? "場次觀測起點" : (idx === mergedHistory.length - 1 ? "場次觀測終點" : "狀態延續")));
+        return {
+          timestamp_ms: pt.t,
+          elapsed_sec: Number(((pt.t - startMs) / 1000).toFixed(1)),
+          clock_time: clockStr,
+          wip: pt.y,
+          hold_sec: Number((Math.max(0, nextT - pt.t) / 1000).toFixed(1)),
+          trigger: triggerText
+        };
+      });
+
+      const filteredTimelineRows = selectedBuffer === "TOTAL"
+        ? changesSorted
+        : changesSorted.filter(c => c.buffer_id === selectedBuffer);
+
+      return {
+        api_channel: "ApiWip(group, round, buffer)",
+        endpoint: `/api/v1/wip?group=${targetGroup}&round=${round}&buffer=${selectedBuffer}`,
+        group_id: targetGroup,
+        round_filter: round,
+        flow_key: flowKey,
+        buffer_filter: selectedBuffer,
+        valid: true,
+        start_time_iso: toTaiwanIso(new Date(startMs).toISOString()),
+        end_time_iso: toTaiwanIso(new Date(endMs).toISOString()),
+        start_ms: startMs,
+        end_ms: endMs,
+        summary: {
+          avg_total_wip: Number((totalArea / T).toFixed(2)),
+          max_total_wip: maxTotal,
+          starved_total_sec: Number((starvedTotalMs / 1000).toFixed(1)),
+          starved_avg_sec: Number((starvedCountTotal ? (starvedTotalMs / starvedCountTotal) / 1000 : 0).toFixed(1)),
+          ready_total_sec: Number((readyTotalMs / 1000).toFixed(1)),
+          active_duration_sec: Number((T / 1000).toFixed(1)),
+          total_wip_events: changesSorted.length,
+          total_process_events: roundEvents.length
+        },
+        per_buffer_stats: perBufferStats,
+        starved_stats: starvedStats,
+        step_chart_points: stepChartPoints,
+        wip_timeline_rows: filteredTimelineRows,
+        data: roundEvents
+      };
+    }
+
+    // 將所有參數化 API 掛載至全域 window.RelayAPI，方便外部 Dashboard 或 Console 直接呼叫
+    window.RelayAPI = {
+      Api1,
+      Api2,
+      Api3,
+      ApiFlow,
+      ApiCompare,
+      ApiWip,
+      getRelayDB: () => RelayDB
+    };
+
+    // ============================================================================
+    // 【四、UI 互動控制與網路圖 SVG 連線渲染】
+    // ============================================================================
+    function selectApiChannel(ch) {
+      currentChannel = ch;
+      ["API1", "API2", "API3", "APIFLOW", "APICOMPARE", "APIWIP"].forEach(k => {
+        const btn = document.getElementById(`tab_${k}`);
+        if (btn) btn.classList.toggle("active", k === ch);
+      });
+
+      const p1 = document.getElementById("param1Wrap");
+      const p2 = document.getElementById("param2Wrap");
+      const p3 = document.getElementById("param3Wrap");
+      const p4 = document.getElementById("param4Wrap");
+      const cmpBar = document.getElementById("compareGroupBar");
+
+      if (ch === "API1") {
+        p1.classList.remove("disabled");
+        p2.classList.add("disabled");
+        p3.classList.add("disabled");
+        if (p4) p4.style.display = "none";
+        cmpBar.style.display = "none";
+      } else if (ch === "API2") {
+        p1.classList.remove("disabled");
+        p2.classList.remove("disabled");
+        p3.classList.add("disabled");
+        if (p4) p4.style.display = "none";
+        cmpBar.style.display = "none";
+      } else if (ch === "API3") {
+        p1.classList.remove("disabled");
+        p2.classList.remove("disabled");
+        p3.classList.remove("disabled");
+        if (p4) p4.style.display = "none";
+        cmpBar.style.display = "none";
+      } else if (ch === "APIFLOW") {
+        p1.classList.remove("disabled");
+        p2.classList.add("disabled");
+        p3.classList.remove("disabled");
+        if (p4) p4.style.display = "none";
+        cmpBar.style.display = "none";
+      } else if (ch === "APICOMPARE") {
+        p1.classList.add("disabled");
+        p2.classList.remove("disabled");
+        p3.classList.remove("disabled");
+        if (p4) p4.style.display = "none";
+        cmpBar.style.display = "flex";
+        renderCompareCheckboxes();
+      } else if (ch === "APIWIP") {
+        p1.classList.remove("disabled");
+        p2.classList.add("disabled");
+        p3.classList.remove("disabled");
+        if (p4) p4.style.display = "inline-flex";
+        cmpBar.style.display = "none";
+      }
+
+      executeStudentApiQuery();
+    }
+
+    let latestWipApiPayload = null;
+
+    function onWipChartControlChange() {
+      if (latestWipApiPayload) {
+        renderWipTimelineSection(latestWipApiPayload);
+      }
+    }
+
+    function selectWipBufferFromTable(bufId) {
+      const sel = document.getElementById("paramWipBuffer");
+      if (sel) {
+        if (![...sel.options].some(o => o.value === bufId)) {
+          const opt = document.createElement("option");
+          opt.value = bufId;
+          opt.textContent = bufId;
+          sel.appendChild(opt);
+        }
+        sel.value = bufId;
+      }
+      executeStudentApiQuery();
+    }
+
+    function renderWipTimelineSection(wipPayload) {
+      latestWipApiPayload = wipPayload;
+      const statusEl = document.getElementById("wipApiStatusLine");
+      const selBufEl = document.getElementById("paramWipBuffer");
+      if (selBufEl && wipPayload.per_buffer_stats) {
+        const prior = wipPayload.buffer_filter || selBufEl.value || "TOTAL";
+        selBufEl.innerHTML = `<option value="TOTAL">TOTAL (全線合計 WIP)</option>` +
+          wipPayload.per_buffer_stats.map(b => `<option value="${b.buffer_id}">${b.buffer_id}</option>`).join("");
+        selBufEl.value = [...selBufEl.options].some(o => o.value === prior) ? prior : "TOTAL";
+      }
+
+      if (!wipPayload || !wipPayload.valid) {
+        if (statusEl) statusEl.textContent = `場次 ${wipPayload?.flow_key || '--'} 尚無生產事件紀錄可供計算 WIP 時間軸`;
+        document.getElementById("wipKpiAvgTotal").textContent = "--";
+        document.getElementById("wipKpiMaxTotal").textContent = "--";
+        document.getElementById("wipKpiStarvedTotal").textContent = "--";
+        document.getElementById("wipKpiStarvedAvg").textContent = "--";
+        document.getElementById("wipInteractiveChartWrap").innerHTML = `<span style="color:#64748b;font-size:13px;">此組別/場次尚無 WIP 事件紀錄</span>`;
+        document.getElementById("wipPerBufferTbody").innerHTML = "";
+        document.getElementById("wipStarvedTbody").innerHTML = "";
+        return;
+      }
+
+      const s = wipPayload.summary;
+      document.getElementById("wipKpiAvgTotal").textContent = `${s.avg_total_wip.toFixed(2)} 件`;
+      document.getElementById("wipKpiMaxTotal").textContent = `${s.max_total_wip} 件`;
+      document.getElementById("wipKpiStarvedTotal").textContent = `${s.starved_total_sec.toFixed(1)} 秒`;
+      document.getElementById("wipKpiStarvedAvg").textContent = `${s.starved_avg_sec.toFixed(1)} 秒`;
+      if (statusEl) {
+        statusEl.innerHTML = `🔗 <b>API 路徑：</b><code>${wipPayload.endpoint}</code> ｜ <b>場次：</b>${wipPayload.flow_key} ｜ <b>有效觀測時間：</b>${s.active_duration_sec} 秒 ｜ <b>WIP 變動事件：</b>${s.total_wip_events} 筆（加工紀錄 ${s.total_process_events} 筆）`;
+      }
+
+      // 渲染各 Buffer 平均與最大 WIP 表
+      const bufTbody = document.getElementById("wipPerBufferTbody");
+      bufTbody.innerHTML = wipPayload.per_buffer_stats.map(r => {
+        const isSel = wipPayload.buffer_filter === r.buffer_id;
+        return `
+          <tr style="cursor:pointer; ${isSel ? 'background:#ccfbf1;font-weight:bold;' : ''}" onclick="selectWipBufferFromTable('${r.buffer_id}')" title="點擊切換上方階梯圖顯示 ${r.buffer_id}">
+            <td><b style="color:#0f766e;">${r.buffer_id}</b> ${isSel ? '👁️' : ''}</td>
+            <td>${r.current_wip} 件</td>
+            <td><b>${r.avg_wip.toFixed(2)} 件</b></td>
+            <td><b>${r.max_wip} 件</b></td>
+          </tr>`;
+      }).join("");
+
+      // 渲染各站 Starved 表
+      const stvTbody = document.getElementById("wipStarvedTbody");
+      stvTbody.innerHTML = wipPayload.starved_stats.map(r => `
+        <tr>
+          <td><b>${r.station_id}</b></td>
+          <td>${r.starved_count} 次</td>
+          <td><b style="color:#b45309;">${r.starved_total_sec.toFixed(1)} 秒</b></td>
+          <td>${r.starved_avg_sec.toFixed(1)} 秒</td>
+          <td>${r.ready_total_sec.toFixed(1)} 秒</td>
+        </tr>`).join("");
+
+      // 渲染互動式 WIP 階梯圖 (含雙層橫軸、整數縱軸、平均線与 Hover 座標 Tooltip)
+      const target = document.getElementById("wipInteractiveChartWrap");
+      const pts = wipPayload.step_chart_points || [];
+      if (!pts.length) {
+        target.textContent = "尚無階梯圖座標點";
+        return;
+      }
+      const xAxisMode = document.getElementById("wipChartXAxisMode")?.value || "BOTH";
+      const max = Math.max(1, ...pts.map(p => p.wip));
+      const avgVal = wipPayload.buffer_filter === "TOTAL"
+        ? Number(s.avg_total_wip || 0)
+        : Number((wipPayload.per_buffer_stats.find(b => b.buffer_id === wipPayload.buffer_filter)?.avg_wip) || 0);
+
+      const W = 860, H = 310;
+      const padL = 64, padR = 36, padT = 28, padB = 62;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      const baseY = padT + plotH;
+      const startMs = wipPayload.start_ms;
+      const endMs = wipPayload.end_ms;
+      const totalSpanMs = Math.max(1, endMs - startMs);
+
+      const x = t => padL + Math.max(0, Math.min(1, (t - startMs) / totalSpanMs)) * plotW;
+      const y = v => baseY - plotH * (Math.max(0, v) / max);
+
+      const yStep = max <= 10 ? 1 : (max <= 25 ? 2 : (max <= 50 ? 5 : Math.ceil(max / 10)));
+      const yTicks = [];
+      for (let v = 0; v <= max; v += yStep) yTicks.push(v);
+      if (yTicks[yTicks.length - 1] !== max) yTicks.push(max);
+
+      const yGridHtml = yTicks.map(v => {
+        const py = y(v).toFixed(1);
+        const isZero = (v === 0);
+        return `
+          <line x1="${padL}" y1="${py}" x2="${padL + plotW}" y2="${py}" stroke="${isZero ? '#64748b' : '#e2e8f0'}" stroke-width="${isZero ? '1.5' : '1'}" ${isZero ? '' : 'stroke-dasharray="4 3"'}/>
+          <text x="${padL - 10}" y="${(Number(py) + 4).toFixed(1)}" text-anchor="end" font-size="12" font-weight="600" fill="#334155">${v} 件</text>`;
+      }).join("");
+
+      const fmtElapsed = sec => {
+        const sRound = Math.max(0, Math.round(sec));
+        if (sRound < 60) return `+${sRound}s`;
+        const m = Math.floor(sRound / 60), r = sRound % 60;
+        return r > 0 ? `+${sRound}s (${m}m${r}s)` : `+${sRound}s (${m}m)`;
+      };
+      const fmtClock = ms => {
+        const d = new Date(ms);
+        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+      };
+
+      const xTickCount = 6;
+      const xTicks = [];
+      for (let i = 0; i <= xTickCount; i++) {
+        const ratio = i / xTickCount;
+        const tMs = startMs + totalSpanMs * ratio;
+        xTicks.push({ tMs, elapsedSec: (tMs - startMs) / 1000, px: padL + plotW * ratio });
+      }
+      const xGridHtml = xTicks.map((tk, idx) => {
+        const px = tk.px.toFixed(1);
+        const isEdge = (idx === 0 || idx === xTicks.length - 1);
+        const anchor = idx === 0 ? "start" : (idx === xTicks.length - 1 ? "end" : "middle");
+        const elStr = idx === 0 ? "0s (起點)" : fmtElapsed(tk.elapsedSec);
+        const clkStr = fmtClock(tk.tMs);
+        let labelSvg = "";
+        if (xAxisMode === "ELAPSED") {
+          labelSvg = `<text x="${px}" y="${baseY + 22}" text-anchor="${anchor}" font-size="12" font-weight="700" fill="#0f766e">${elStr}</text>`;
+        } else if (xAxisMode === "CLOCK") {
+          labelSvg = `<text x="${px}" y="${baseY + 22}" text-anchor="${anchor}" font-size="12" font-weight="600" fill="#334155">${clkStr}</text>`;
+        } else {
+          labelSvg = `
+            <text x="${px}" y="${baseY + 20}" text-anchor="${anchor}" font-size="12" font-weight="700" fill="#0f766e">${elStr}</text>
+            <text x="${px}" y="${baseY + 36}" text-anchor="${anchor}" font-size="11" fill="#64748b">${clkStr}</text>`;
+        }
+        return `
+          <line x1="${px}" y1="${padT}" x2="${px}" y2="${baseY}" stroke="${isEdge ? '#94a3b8' : '#f1f5f9'}" stroke-width="1"/>
+          <line x1="${px}" y1="${baseY}" x2="${px}" y2="${baseY + 5}" stroke="#64748b" stroke-width="1.5"/>
+          ${labelSvg}`;
+      }).join("");
+
+      const pathPts = [];
+      const areaPts = [`M ${x(pts[0].timestamp_ms).toFixed(1)} ${baseY.toFixed(1)}`];
+      pts.forEach((p, i) => {
+        const px = x(p.timestamp_ms).toFixed(1), py = y(p.wip).toFixed(1);
+        if (i === 0) {
+          pathPts.push(`M ${px} ${py}`);
+          areaPts.push(`L ${px} ${py}`);
+          return;
+        }
+        pathPts.push(`H ${px} V ${py}`);
+        areaPts.push(`H ${px} V ${py}`);
+      });
+      areaPts.push(`L ${x(pts[pts.length - 1].timestamp_ms).toFixed(1)} ${baseY.toFixed(1)} Z`);
+
+      let avgLineHtml = "";
+      if (avgVal > 0 && avgVal <= max) {
+        const avgPy = y(avgVal).toFixed(1);
+        avgLineHtml = `
+          <line x1="${padL}" y1="${avgPy}" x2="${padL + plotW}" y2="${avgPy}" stroke="#f59e0b" stroke-width="1.8" stroke-dasharray="6 4"/>
+          <rect x="${padL + plotW - 128}" y="${(Number(avgPy) - 18).toFixed(1)}" width="124" height="17" rx="4" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+          <text x="${padL + plotW - 66}" y="${(Number(avgPy) - 6).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="#b45309">平均 WIP: ${avgVal.toFixed(2)} 件</text>`;
+      }
+
+      const dotsHtml = pts.map(p => {
+        const px = x(p.timestamp_ms).toFixed(1), py = y(p.wip).toFixed(1);
+        const isPeak = (p.wip === max && max > 0);
+        const dotColor = isPeak ? "#dc2626" : "#0d9488";
+        const dotRadius = isPeak ? "5.5" : "4";
+        return `
+          <g class="api-wip-dot-group" style="cursor:pointer;"
+             data-px="${px}" data-py="${py}"
+             data-elapsed="${p.elapsed_sec}"
+             data-clock="${p.clock_time}"
+             data-wip="${p.wip}"
+             data-hold="${p.hold_sec}"
+             data-peak="${isPeak ? '1' : '0'}"
+             data-reason="${String(p.trigger || '').replace(/"/g, '&quot;')}">
+            <circle cx="${px}" cy="${py}" r="12" fill="transparent"/>
+            <circle class="api-wip-dot" cx="${px}" cy="${py}" r="${dotRadius}" fill="${dotColor}" stroke="#ffffff" stroke-width="1.8"/>
+          </g>`;
+      }).join("");
+
+      target.innerHTML = `
+        <svg id="apiWipSvg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:560px;display:block;user-select:none;">
+          <defs>
+            <linearGradient id="apiWipAreaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.26"/>
+              <stop offset="100%" stop-color="#14b8a6" stop-opacity="0.03"/>
+            </linearGradient>
+          </defs>
+          ${yGridHtml}
+          ${xGridHtml}
+          <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${baseY}" stroke="#64748b" stroke-width="1.5"/>
+          <path d="${areaPts.join(" ")}" fill="url(#apiWipAreaGrad)"/>
+          ${avgLineHtml}
+          <path d="${pathPts.join(" ")}" fill="none" stroke="#0d9488" stroke-width="2.6" stroke-linejoin="round"/>
+          <line id="apiWipHoverVLine" x1="0" y1="${padT}" x2="0" y2="${baseY}" stroke="#0f172a" stroke-width="1" stroke-dasharray="3 3" style="display:none;pointer-events:none;"/>
+          ${dotsHtml}
+          <text x="${padL - 46}" y="${padT - 10}" text-anchor="start" font-size="12" font-weight="700" fill="#334155">▲ 在製品數量 (${wipPayload.buffer_filter})</text>
+          <text x="${padL + plotW / 2}" y="${H - 5}" text-anchor="middle" font-size="12" font-weight="700" fill="#475569">生產活動時間軸（總歷時 ${((endMs - startMs) / 1000).toFixed(1)} 秒） ➔</text>
+        </svg>
+        <div id="apiWipTooltip" style="display:none;position:absolute;pointer-events:none;z-index:20;background:rgba(15,23,42,0.94);color:#f8fafc;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.55;box-shadow:0 10px 15px -3px rgba(0,0,0,0.25);border:1px solid #334155;min-width:210px;max-width:320px;"></div>`;
+
+      const tooltip = document.getElementById("apiWipTooltip");
+      const vLine = document.getElementById("apiWipHoverVLine");
+      const svgEl = document.getElementById("apiWipSvg");
+      target.querySelectorAll(".api-wip-dot-group").forEach(gEl => {
+        gEl.addEventListener("mouseenter", () => {
+          const px = Number(gEl.dataset.px), py = Number(gEl.dataset.py);
+          const isPeak = gEl.dataset.peak === "1";
+          const dot = gEl.querySelector(".api-wip-dot");
+          if (dot) dot.setAttribute("r", "7");
+          if (vLine) {
+            vLine.setAttribute("x1", String(px));
+            vLine.setAttribute("x2", String(px));
+            vLine.style.display = "block";
+          }
+          const peakBadge = isPeak ? `<span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:4px;font-size:11px;margin-left:6px;font-weight:700;">🔥 最高峰</span>` : "";
+          tooltip.innerHTML = `
+            <div style="font-weight:800;font-size:13px;color:#5eead4;margin-bottom:4px;border-bottom:1px solid #334155;padding-bottom:3px;">
+              📍 座標點 (X: +${gEl.dataset.elapsed}s, Y: ${gEl.dataset.wip} 件)${peakBadge}
+            </div>
+            <div>⏱️ <b>開工經過時間：</b>+${gEl.dataset.elapsed} 秒</div>
+            <div>🕒 <b>實際打卡時刻：</b>${gEl.dataset.clock}</div>
+            <div>📦 <b>當下在製品數：</b><b style="color:#fde047;font-size:13px;">${gEl.dataset.wip} 件</b>（維持 ${gEl.dataset.hold} 秒）</div>
+            <div style="margin-top:4px;color:#cbd5e1;font-size:11px;border-top:1px dashed #334155;padding-top:3px;">🔧 <b>事件：</b>${gEl.dataset.reason}</div>`;
+          tooltip.style.display = "block";
+
+          const svgRect = svgEl.getBoundingClientRect();
+          const wrapRect = target.getBoundingClientRect();
+          const scaleX = svgRect.width / W, scaleY = svgRect.height / H;
+          const clientX = (svgRect.left - wrapRect.left) + px * scaleX + target.scrollLeft;
+          const clientY = (svgRect.top - wrapRect.top) + py * scaleY;
+          const tipW = tooltip.offsetWidth || 240, tipH = tooltip.offsetHeight || 120;
+          let leftPos = clientX + 14;
+          if (leftPos + tipW > target.scrollLeft + target.clientWidth - 10) leftPos = clientX - tipW - 14;
+          tooltip.style.left = `${Math.max(8, leftPos)}px`;
+          tooltip.style.top = `${Math.max(8, clientY - tipH - 10)}px`;
+        });
+        gEl.addEventListener("mouseleave", () => {
+          const isPeak = gEl.dataset.peak === "1";
+          const dot = gEl.querySelector(".api-wip-dot");
+          if (dot) dot.setAttribute("r", isPeak ? "5.5" : "4");
+          if (vLine) vLine.style.display = "none";
+          tooltip.style.display = "none";
+        });
+      });
+    }
+
+    function executeStudentApiQuery() {
+      refreshRoundOptions();
+      const g = paramGroup.value;
+      const st = document.getElementById("paramStation").value;
+      const rd = document.getElementById("paramRound").value;
+      const buf = document.getElementById("paramWipBuffer")?.value || "TOTAL";
+
+      let codeText = "";
+      let restText = "";
+
+      if (currentChannel === "APICOMPARE") {
+        const grpArr = Array.from(selectedCompareGroups).sort();
+        activeApiResult = ApiCompare(grpArr, st, rd);
+        codeText = `const cmp = await ApiCompare(${JSON.stringify(grpArr)}, "${st}", "${rd}");`;
+        restText = `GET /api/v1/compare?groups=${grpArr.join(",")}&station=${st}&round=${rd}`;
+
+        document.getElementById("apiCallCodeText").textContent = codeText;
+        document.getElementById("apiRestUrlText").textContent = restText;
+
+        document.getElementById("singleGroupTopSection").style.display = "none";
+        document.getElementById("compareGroupTopSection").style.display = "block";
+        document.getElementById("wipTimelineTopSection").style.display = "none";
+        renderMultiGroupComparisonView(activeApiResult);
+
+        document.getElementById("apiJsonOutput").textContent = JSON.stringify(activeApiResult, null, 2);
+        return;
+      }
+
+      document.getElementById("singleGroupTopSection").style.display = "block";
+      document.getElementById("compareGroupTopSection").style.display = "none";
+      document.getElementById("wipTimelineTopSection").style.display = "block";
+
+      // 計算該組別與場次的 WIP 時間軸分析並渲染看板
+      const wipPayload = ApiWip(g, rd, buf);
+      renderWipTimelineSection(wipPayload);
+
+      if (currentChannel === "API1") {
+        activeApiResult = Api1(g);
+        codeText = `const data = await Api1("${g}");`;
+        restText = `GET /api/v1/ta1?group=${g}`;
+      } else if (currentChannel === "API2") {
+        activeApiResult = Api2(g, st);
+        codeText = `const data = await Api2("${g}", "${st}");`;
+        restText = `GET /api/v1/ta1?group=${g}&station=${st}`;
+      } else if (currentChannel === "API3") {
+        activeApiResult = Api3(g, st, rd);
+        codeText = `const data = await Api3("${g}", "${st}", "${rd}");`;
+        restText = `GET /api/v1/ta1?group=${g}&station=${st}&round=${rd}`;
+      } else if (currentChannel === "APIWIP") {
+        activeApiResult = wipPayload;
+        codeText = `const wipData = await ApiWip("${g}", "${rd}", "${wipPayload.buffer_filter}");`;
+        restText = `GET ${wipPayload.endpoint}`;
+      } else {
+        activeApiResult = ApiFlow(g, rd);
+        codeText = `const flowGraph = await ApiFlow("${g}", "${rd}");`;
+        restText = `GET /api/v1/network?group=${g}&round=${rd}`;
+      }
+
+      document.getElementById("apiCallCodeText").textContent = codeText;
+      document.getElementById("apiRestUrlText").textContent = restText;
+
+      // 永遠同步渲染上方的「右圖：工站拓樸網路圖」
+      const flowPayload = currentChannel === "APIFLOW" ? activeApiResult : ApiFlow(g, rd);
+      document.getElementById("networkRoundBadge").textContent =
+        `目前網路圖資料源：${flowPayload.group_id} / 場次 ${flowPayload.round_filter} (資料表鍵值: ${flowPayload.flow_table_key})`;
+      renderNetworkTopology(flowPayload);
+
+      // 渲染下方的長條圖、折線圖、明細表與 JSON 輸出
+      const eventsForChart = (currentChannel === "APIFLOW" || currentChannel === "APIWIP")
+        ? queryRelayEvents({ group: g, station: "ALL", round: rd, channelName: currentChannel })
+        : activeApiResult;
+
+      document.getElementById("barChartTitle").textContent = "📊 2. 各工作站平均 Cycle Time（長條圖）";
+      document.getElementById("lineChartTitle").textContent = "📈 3. 逐件加工 Cycle Time 趨勢（折線圖）";
+      renderChartsAndTable(eventsForChart);
+
+      // JSON 預覽（完整顯示不截斷）
+      document.getElementById("apiJsonOutput").textContent = JSON.stringify(activeApiResult, null, 2);
+    }
+
+    // 渲染管道 5：同頁跨組 PK 排行榜、9站彩色熱力圖、並排群組長條圖、跨組學習曲線折線圖
+    function renderMultiGroupComparisonView(cmpPayload) {
+      const grpKeys = Object.keys(cmpPayload.groups);
+      const stAxis = cmpPayload.stations_axis;
+      const selStation = cmpPayload.query_params.station;
+      const selRound = cmpPayload.query_params.round;
+
+      document.getElementById("compareSummaryBadge").textContent =
+        `共比對 ${grpKeys.length} 組 (${grpKeys.join(" vs. ")}) ｜ 場次：${selRound}`;
+
+      // 找出最高產量、最低全線平均 CT、最嚴重瓶頸
+      let maxOutput = -1;
+      let minOverallCt = Infinity;
+      let maxBottleCt = -1;
+      let minLineCt = Infinity;   // 只比：已到終點站、沒有跨越 3 小時的組（同 Python 排名規則）
+      grpKeys.forEach(g => {
+        const gp0 = cmpPayload.groups[g];
+        if (gp0.line_cycle_time_sec && gp0.terminal_reached && !gp0.long_span && gp0.line_cycle_time_sec < minLineCt) minLineCt = gp0.line_cycle_time_sec;
+      });
+      grpKeys.forEach(g => {
+        const gp = cmpPayload.groups[g];
+        if (gp.final_output_sets > maxOutput) maxOutput = gp.final_output_sets;
+        if (gp.overall_avg_ct_sec > 0 && gp.overall_avg_ct_sec < minOverallCt) minOverallCt = gp.overall_avg_ct_sec;
+        if (gp.bottleneck_avg_sec > maxBottleCt) maxBottleCt = gp.bottleneck_avg_sec;
+      });
+
+      // 1. 渲染跨組 PK 排行榜表格
+      const pkTbody = document.getElementById("comparePkTbody");
+      pkTbody.innerHTML = grpKeys.map(g => {
+        const gp = cmpPayload.groups[g];
+        const badges = [];
+        if (gp.line_cycle_time_sec && gp.line_cycle_time_sec === minLineCt) {
+          badges.push(`<span style="background:#ede9fe;color:#5b21b6;padding:2px 7px;border-radius:4px;font-weight:bold;font-size:11.5px;">🏁 產線 Cycle Time 最短</span>`);
+        }
+        if (gp.final_output_sets > 0 && gp.final_output_sets === maxOutput) {
+          badges.push(`<span style="background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-weight:bold;font-size:11.5px;">🏆 產量最高</span>`);
+        }
+        if (gp.overall_avg_ct_sec > 0 && gp.overall_avg_ct_sec === minOverallCt) {
+          badges.push(`<span style="background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:4px;font-weight:bold;font-size:11.5px;">⚡ 全線最快</span>`);
+        }
+        if (gp.bottleneck_avg_sec > 0 && gp.bottleneck_avg_sec === maxBottleCt) {
+          badges.push(`<span style="background:#fee2e2;color:#991b1b;padding:2px 7px;border-radius:4px;font-weight:bold;font-size:11.5px;">🚨 瓶頸最卡</span>`);
+        }
+        return `
+          <tr>
+            <td><b style="font-size:14px; color:#1e40af;">${g}</b></td>
+            <td>${gp.total_records} 筆</td>
+            <td><b style="color:#16a34a; font-size:14px;">${gp.final_output_sets} 組</b> <span style="color:#64748b;font-size:11px;">(${gp.final_station_id}${gp.terminal_reached ? "" : "，未到終點"})</span></td>
+            <td>${gp.line_cycle_time_sec ? `<b>${gp.line_cycle_time_sec} 秒</b>${gp.long_span ? ' <span title="跨越超過 3 小時" style="color:#b45309;">⚠️</span>' : ""}` : `<span style="color:#64748b;font-size:11.5px;">${selRound === "ALL" ? "選單一場次" : "--"}</span>`}</td>
+            <td><b>${gp.overall_avg_ct_sec} 秒</b></td>
+            <td><b style="color:#dc2626;">${gp.bottleneck_station} (${gp.bottleneck_avg_sec}s)</b></td>
+            <td>P90: <b>${gp.bottleneck_p90_sec}s</b> ｜ SD: <b>${gp.bottleneck_std_sec}s</b></td>
+            <td>${badges.join(" ") || `<span style="color:#64748b;">正常進行中</span>`}</td>
+          </tr>
+        `;
+      }).join("");
+
+      // 2. 渲染跨組 × 9 工作站「Cycle Time 彩色熱力圖矩陣」
+      const heatThead = document.getElementById("compareHeatmapThead");
+      const heatTbody = document.getElementById("compareHeatmapTbody");
+      heatThead.innerHTML = `
+        <tr>
+          <th>組別</th>
+          ${stAxis.map(st => `<th style="text-align:center;">${st}</th>`).join("")}
+          <th style="text-align:center;">終點產出</th>
+          <th>該組瓶頸</th>
+        </tr>
+      `;
+      heatTbody.innerHTML = grpKeys.map(g => {
+        const gp = cmpPayload.groups[g];
+        const stLookup = {};
+        gp.stations_summary.forEach(s => { stLookup[s.station_id] = s; });
+
+        const cellsHtml = stAxis.map(st => {
+          const s = stLookup[st];
+          if (!s || s.completed_count === 0) {
+            return `<td><div class="heat-cell heat-empty">--</div></td>`;
+          }
+          let cls = "heat-fast";
+          if (s.is_bottleneck) {
+            cls = "heat-bottle";
+          } else if (s.avg_cycle_sec > 65) {
+            cls = "heat-slow";
+          } else if (s.avg_cycle_sec >= 45) {
+            cls = "heat-mid";
+          }
+          return `
+            <td>
+              <div class="heat-cell ${cls}" title="${g} ${st}: 平均 ${s.avg_cycle_sec}s (完工 ${s.completed_count} 件, P90: ${s.p90_cycle_sec}s)">
+                ${s.avg_cycle_sec}s ${s.is_bottleneck ? '🚨' : ''}
+                <div style="font-size:10px; font-weight:normal; opacity:0.85;">(${s.completed_count}件)</div>
+              </div>
+            </td>
+          `;
+        }).join("");
+
+        return `
+          <tr>
+            <td><b style="color:#1e40af;">${g}</b></td>
+            ${cellsHtml}
+            <td style="text-align:center;"><b>${gp.final_output_sets} 組</b></td>
+            <td><b style="color:#dc2626;">${gp.bottleneck_station} (${gp.bottleneck_avg_sec}s)</b></td>
+          </tr>
+        `;
+      }).join("");
+
+      // 3. 繪製跨組 × 9 工作站「並排群組長條圖 (Grouped Bar Chart)」
+      document.getElementById("barChartTitle").textContent =
+        `📊 3. 跨組 × 9 工作站平均 Cycle Time 並排比較圖（${grpKeys.join(" vs. ")}）`;
+
+      const palette = [
+        { bg: "rgba(37, 99, 235, 0.82)", border: "#2563eb" },
+        { bg: "rgba(22, 163, 74, 0.82)", border: "#16a34a" },
+        { bg: "rgba(217, 119, 6, 0.82)", border: "#d97706" },
+        { bg: "rgba(220, 38, 38, 0.82)", border: "#dc2626" },
+        { bg: "rgba(147, 51, 234, 0.82)", border: "#9333ea" },
+        { bg: "rgba(8, 145, 178, 0.82)", border: "#0891b2" }
+      ];
+
+      const barDatasets = grpKeys.map((g, idx) => {
+        const gp = cmpPayload.groups[g];
+        const stLookup = {};
+        gp.stations_summary.forEach(s => { stLookup[s.station_id] = s.avg_cycle_sec; });
+        const color = palette[idx % palette.length];
+        return {
+          label: `${g} 平均 CT (秒)`,
+          data: stAxis.map(st => stLookup[st] || 0),
+          backgroundColor: color.bg,
+          borderColor: color.border,
+          borderWidth: 1,
+          borderRadius: 4
+        };
+      });
+
+      const barCtx = document.getElementById("barChart").getContext("2d");
+      if (barChartInstance) barChartInstance.destroy();
+      barChartInstance = new Chart(barCtx, {
+        type: "bar",
+        data: { labels: stAxis, datasets: barDatasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: true, position: "top" } },
+          scales: { y: { beginAtZero: true, title: { display: true, text: "平均 Cycle Time (秒)" } } }
+        }
+      });
+
+      // 4. 繪製跨組折線圖：
+      //    - 若變數 2 選擇 ALL：繪製各組在 ST01~ST09 的平均 CT 曲線對照
+      //    - 若變數 2 選擇特定工站 (如 ST08)：繪製各組在該站「第 1 件、第 2 件…」的學習曲線對照！
+      const lineCtx = document.getElementById("lineChart").getContext("2d");
+      if (lineChartInstance) lineChartInstance.destroy();
+
+      if (selStation === "ALL") {
+        document.getElementById("lineChartTitle").textContent =
+          `📈 4. 跨組各工作站 Cycle Time 曲線分佈（提示：上方變數 2 選單一工站可看逐件學習曲線）`;
+        const lineDatasets = grpKeys.map((g, idx) => {
+          const gp = cmpPayload.groups[g];
+          const stLookup = {};
+          gp.stations_summary.forEach(s => { stLookup[s.station_id] = s.avg_cycle_sec; });
+          const color = palette[idx % palette.length];
+          return {
+            label: g,
+            data: stAxis.map(st => stLookup[st] || 0),
+            borderColor: color.border,
+            backgroundColor: color.border,
+            tension: 0.25,
+            fill: false
+          };
+        });
+        lineChartInstance = new Chart(lineCtx, {
+          type: "line",
+          data: { labels: stAxis, datasets: lineDatasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, title: { display: true, text: "平均 Cycle Time (秒)" } } }
+          }
+        });
+      } else {
+        document.getElementById("lineChartTitle").textContent =
+          `📈 4. 【${selStation} 工站】跨組逐件加工時間學習曲線（${grpKeys.join(" vs. ")}）`;
+        const maxLen = Math.max(
+          0,
+          ...grpKeys.map(g => cmpPayload.groups[g].station_filtered_data.length)
+        );
+        const xLabels = Array.from({ length: maxLen }, (_, i) => `第 ${i + 1} 件`);
+        const lineDatasets = grpKeys.map((g, idx) => {
+          const list = cmpPayload.groups[g].station_filtered_data.map(d => d.duration_sec);
+          const color = palette[idx % palette.length];
+          return {
+            label: `${g} (${selStation})`,
+            data: list,
+            borderColor: color.border,
+            backgroundColor: color.border,
+            tension: 0.25,
+            fill: false
+          };
+        });
+        lineChartInstance = new Chart(lineCtx, {
+          type: "line",
+          data: { labels: xLabels, datasets: lineDatasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, title: { display: true, text: "單件 Cycle Time (秒)" } } }
+          }
+        });
+      }
+
+      // 5. 更新下方明細表（完整顯示全部篩選筆數，不截斷）
+      const rows = (cmpPayload.data || []).slice().sort(
+        (a, b) => new Date(b.finish_time || b.start_time) - new Date(a.finish_time || a.start_time)
+      );
+      document.getElementById("tableCountBadge").textContent = `共 ${rows.length} 筆（完整顯示）`;
+      const tbody = document.getElementById("filteredLogsTbody");
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td><b>${r.group_id}</b></td>
+          <td>${r.station_id}</td>
+          <td>${r.product_id || "-"}</td>
+          <td><b>${r.duration_sec}s</b></td>
+          <td>${r.wait_sec}s</td>
+          <td>${r.finish_time ? new Date(r.finish_time).toLocaleTimeString() : "-"}</td>
+        </tr>
+      `).join("");
+    }
+
+    // 渲染右圖的「工站拓樸網路圖 + SVG 貝茲曲線箭頭」
+    function renderNetworkTopology(flowPayload) {
+      const colContainer = document.getElementById("networkColumns");
+      const svg = document.getElementById("networkSvg");
+      colContainer.innerHTML = "";
+      svg.innerHTML = "";
+
+      if (!flowPayload.nodes || flowPayload.nodes.length === 0) {
+        colContainer.innerHTML = `<div style="color:#64748b;">尚無流程節點資料</div>`;
+        return;
+      }
+
+      // 依 column_level 分欄排列（例如 ST01, ST02 在第 0 欄；匯流站 ST03 在第 1 欄）
+      const colMap = {};
+      flowPayload.nodes.forEach(n => {
+        const lvl = n.column_level || 0;
+        if (!colMap[lvl]) colMap[lvl] = [];
+        colMap[lvl].push(n);
+      });
+
+      const levels = Object.keys(colMap).map(Number).sort((a, b) => a - b);
+      levels.forEach(lvl => {
+        const colDiv = document.createElement("div");
+        colDiv.className = "network-col";
+
+        colMap[lvl].forEach(node => {
+          const box = document.createElement("div");
+          box.className = `net-node ${node.status_color}`;
+          box.id = `net_node_${node.id}`;
+          box.innerHTML = `
+            <div class="net-node-title">${node.id}</div>
+            <div class="net-node-line">${node.line1_text}</div>
+            <div class="net-node-line">${node.line2_text}</div>
+            ${node.badge_text ? `<div class="net-node-badge">${node.badge_text}</div>` : ""}
+          `;
+          colDiv.appendChild(box);
+        });
+
+        colContainer.appendChild(colDiv);
+      });
+
+      // 等待 DOM 排版完成後，使用 SVG 畫出方框之間的平滑曲線箭頭
+      requestAnimationFrame(() => drawNetworkEdgesSvg(flowPayload.edges));
+    }
+
+    function drawNetworkEdgesSvg(edges) {
+      const stage = document.getElementById("networkStage");
+      const svg = document.getElementById("networkSvg");
+      if (!stage || !svg) return;
+
+      const stageRect = stage.getBoundingClientRect();
+      svg.setAttribute("width", stage.scrollWidth);
+      svg.setAttribute("height", stage.scrollHeight);
+
+      // 定義箭頭 marker
+      let svgHtml = `
+        <defs>
+          <marker id="arrowHead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+            <polygon points="0 0, 10 4, 0 8" fill="#64748b" />
+          </marker>
+        </defs>
+      `;
+
+      edges.forEach(e => {
+        const fromEl = document.getElementById(`net_node_${e.from}`);
+        const toEl = document.getElementById(`net_node_${e.to}`);
+        if (!fromEl || !toEl) return;
+
+        const r1 = fromEl.getBoundingClientRect();
+        const r2 = toEl.getBoundingClientRect();
+
+        const x1 = r1.right - stageRect.left + stage.scrollLeft;
+        const y1 = r1.top + r1.height / 2 - stageRect.top + stage.scrollTop;
+        const x2 = r2.left - stageRect.left + stage.scrollLeft - 4;
+        const y2 = r2.top + r2.height / 2 - stageRect.top + stage.scrollTop;
+
+        const ctrlOffset = Math.max(35, (x2 - x1) * 0.45);
+        const pathD = `M ${x1} ${y1} C ${x1 + ctrlOffset} ${y1}, ${x2 - ctrlOffset} ${y2}, ${x2} ${y2}`;
+
+        svgHtml += `<path d="${pathD}" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrowHead)" />`;
+      });
+
+      svg.innerHTML = svgHtml;
+    }
+
+    function renderChartsAndTable(resObj) {
+      const summaries = resObj.stations_summary || [];
+      const rows = resObj.data || [];
+
+      document.getElementById("tableCountBadge").textContent = `共 ${rows.length} 筆`;
+
+      // 更新左圖的 4 大 KPI 摘要卡片與 9 站狀態網格
+      document.getElementById("kpiTotalEvents").textContent = `${rows.length} 筆`;
+      // 改良版：產出 = 流程終點站的完工筆數（場次 ALL = 各場次合計）；終點站還沒有紀錄時標示「未到終點」
+      const lm = resObj.line_metrics;
+      const ls = resObj.lines_summary || [];
+      const outSets = ls.reduce((a, l) => a + l.output_sets, 0);
+      document.getElementById("kpiFinalOutput").textContent = `${outSets} 組`;
+      document.getElementById("kpiFinalStation").textContent = lm
+        ? `終點工站：${lm.final_station || "--"}${lm.terminal_reached ? "" : `（未到終點，暫用 ${lm.output_station} 試算）`}`
+        : (ls.length ? `${ls.length} 個場次合計：${ls.map(l => `${l.round} ${l.output_sets}組`).join("、")}` : "終點工站：--");
+      const lcEl = document.getElementById("kpiLineCycle");
+      const lcSub = document.getElementById("kpiLineCycleSub");
+      if (lcEl) {
+        if (lm && lm.takt_sec) {
+          lcEl.textContent = `${lm.takt_sec} 秒`;
+          lcSub.textContent = `總耗時 ${lm.total_sec} 秒 ÷ ${lm.output_sets} 組｜平衡率 ${lm.balance_pct}%` + (lm.long_span ? "｜⚠️ 跨越超過 3 小時" : "");
+        } else {
+          lcEl.textContent = "--";
+          lcSub.textContent = ls.length > 1 ? "場次 ALL：請選單一場次才能計算" : "選單一組別 + 單一場次時計算";
+        }
+      }
+
+      const bottleObj = summaries.find(s => s.is_bottleneck);
+      if (bottleObj) {
+        document.getElementById("kpiBottleneck").textContent = `${bottleObj.station_id} (${bottleObj.avg_cycle_sec}s)`;
+      } else {
+        document.getElementById("kpiBottleneck").textContent = "--";
+      }
+
+      const stGrid = document.getElementById("stationStatusGrid");
+      if (stGrid) {
+        if (summaries.length === 0) {
+          stGrid.innerHTML = `<div style="color:#64748b; font-size:13px;">此篩選條件下尚無工站紀錄</div>`;
+        } else {
+          stGrid.innerHTML = summaries.map((s, idx) => {
+            const cls = s.is_bottleneck
+              ? "red"
+              : s.light_status === "PURPLE"
+              ? "purple"
+              : s.light_status === "YELLOW"
+              ? "yellow"
+              : "green";
+            const wipInText = s.is_start ? "原料無限" : (s.estimated_wip_in === null ? "--" : `${s.estimated_wip_in} 件`);
+            return `
+              <div class="st-card ${cls}">
+                <div class="st-head">
+                  <span>${s.station_id} ${s.is_bottleneck ? "🚨瓶頸" : ""}</span>
+                  <span>CT: ${s.avg_cycle_sec}s</span>
+                </div>
+                <div class="st-meta">
+                  <div>完工數：<b>${s.completed_count}</b> 件 (P90: ${s.p90_cycle_sec}s)</div>
+                  <div>站前待工：<b>${wipInText}</b> ｜ 站後待領：<b>${s.estimated_wip_out}</b>/${s.wip_limit}</div>
+                  <div style="margin-top:4px; font-weight:bold;">${s.light_label}</div>
+                </div>
+              </div>
+            `;
+          }).join("");
+        }
+      }
+
+      // 明細表（完整顯示全部篩選筆數，不截斷）
+      const tbody = document.getElementById("filteredLogsTbody");
+      tbody.innerHTML = rows.slice().reverse().map(r => `
+        <tr>
+          <td><b>${r.group_id}</b></td>
+          <td>${r.station_id}</td>
+          <td>${r.product_id || "-"}</td>
+          <td><b>${r.duration_sec}s</b></td>
+          <td>${r.wait_sec}s</td>
+          <td>${r.finish_time ? new Date(r.finish_time).toLocaleTimeString() : "-"}</td>
+        </tr>
+      `).join("");
+
+      // 1. 長條圖
+      const labels = summaries.map(s => s.station_id);
+      const avgs = summaries.map(s => s.avg_cycle_sec);
+      const maxVal = Math.max(0, ...avgs);
+      const colors = avgs.map(v => (v > 0 && v === maxVal) ? "rgba(220, 38, 38, 0.85)" : "rgba(37, 99, 235, 0.8)");
+
+      const barCtx = document.getElementById("barChart").getContext("2d");
+      if (barChartInstance) barChartInstance.destroy();
+      barChartInstance = new Chart(barCtx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "平均 Cycle Time (秒)",
+            data: avgs,
+            backgroundColor: colors,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, title: { display: true, text: "秒 (sec)" } } }
+        }
+      });
+
+      // 2. 折線圖
+      const seriesMap = {};
+      rows.forEach(r => {
+        if (!seriesMap[r.station_id]) seriesMap[r.station_id] = [];
+        seriesMap[r.station_id].push(r.duration_sec);
+      });
+      const stKeys = Object.keys(seriesMap).sort();
+      const maxLen = Math.max(0, ...stKeys.map(k => seriesMap[k].length));
+      const xLabels = Array.from({ length: maxLen }, (_, i) => `第 ${i + 1} 件`);
+      const palette = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#9333ea"];
+
+      const lineCtx = document.getElementById("lineChart").getContext("2d");
+      if (lineChartInstance) lineChartInstance.destroy();
+      lineChartInstance = new Chart(lineCtx, {
+        type: "line",
+        data: {
+          labels: xLabels,
+          datasets: stKeys.map((k, idx) => ({
+            label: k,
+            data: seriesMap[k],
+            borderColor: palette[idx % palette.length],
+            backgroundColor: palette[idx % palette.length],
+            tension: 0.25,
+            fill: false
+          }))
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true, title: { display: true, text: "Cycle Time (秒)" } } }
+        }
+      });
+    }
+
+    function exportActiveApiJson() {
+      if (!activeApiResult) return;
+      const blob = new Blob([JSON.stringify(activeApiResult, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${currentChannel}_${paramGroup.value}.json`;
+      a.click();
+    }
+
+    function setupSyncSchedule() {
+      if (syncTimer) clearInterval(syncTimer);
+      const mode = document.getElementById("dataSourceModeSelect").value;
+      if (mode === "PURE_LOCAL_JSON") return;
+      const ms = Number(document.getElementById("syncIntervalSelect").value);
+      if (ms > 0) {
+        syncTimer = setInterval(() => syncFromCloudSupabase(false), ms);
+      }
+    }
+
+    paramGroup.addEventListener("change", executeStudentApiQuery);
+    document.getElementById("paramStation").addEventListener("change", executeStudentApiQuery);
+    document.getElementById("paramRound").addEventListener("change", executeStudentApiQuery);
+    document.getElementById("syncIntervalSelect").addEventListener("change", setupSyncSchedule);
+    window.addEventListener("resize", () => {
+      if (activeApiResult) {
+        const flowPayload = currentChannel === "APIFLOW"
+          ? activeApiResult
+          : ApiFlow(paramGroup.value, document.getElementById("paramRound").value);
+        drawNetworkEdgesSvg(flowPayload.edges);
+      }
+    });
+
+    // 啟動：初次載入直接從雲端同步完整最新資料（包含歷史批次匯入的 G23~G25 資料）並更新本地 JSON 快取，之後轉為「有新數據才抓」增量模式！
+    (async function initSystem() {
+      const mode = document.getElementById("dataSourceModeSelect").value;
+      if (mode === "PURE_LOCAL_JSON") {
+        await tryFetchLocalRelayJsonFile();
+      } else {
+        await syncFromCloudSupabase(true);
+      }
+      initRealtimeSubscription();
+      setupSyncSchedule();
+    })();
+  </script>
+</body>
+</html>
