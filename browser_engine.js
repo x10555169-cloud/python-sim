@@ -29,6 +29,8 @@
   const fetchEvents = () => getAll(`event?select=${EVENT_COLUMNS}&order=finish_time.asc.nullslast,id.asc`);
   const fetchFlows = () => getOptional("station_flow?select=group_id,station_id,next_station_id&order=id.asc");
   const fetchModes = () => getOptional("station_wip?select=group_id,station_id,input_wip,updated_at&station_id=in.(GROUP_MODE,SYSTEM_MODE)");
+  // 離散事件模擬用：各站緩衝區上限（station_wip 裡的 ST05_LIMIT 這種列）
+  const fetchLimits = () => getOptional("station_wip?select=group_id,station_id,input_wip&station_id=like.*LIMIT");
 
   // ---------- 2. Python（Pyodide） ----------
   let pyReady = null;
@@ -45,8 +47,11 @@
         });
       }
       const py = await window.loadPyodide({ indexURL: PYODIDE_URL });
-      const src = await (await fetch(`simulation.py?t=${Date.now()}`)).text();
-      py.FS.writeFile("simulation.py", src);
+      for (const f of ["simulation.py", "des.py"]) {   // 統計分析 + 離散事件模擬，都是 GitHub 上的同一份 Python 檔
+        const r = await fetch(`${f}?t=${Date.now()}`);
+        if (!r.ok) throw new Error(`讀不到 ${f}（請確認已上傳到 GitHub）`);
+        py.FS.writeFile(f, await r.text());
+      }
       py.runPython(`
 import json, sys
 sys.path.insert(0, ".")
@@ -54,9 +59,27 @@ from simulation import compute
 def run_compute(tick, events_json, flows_json, modes_json):
     message, data = compute(int(tick), json.loads(events_json), json.loads(flows_json), json.loads(modes_json))
     return json.dumps({"message": message, "data": data}, ensure_ascii=False, default=str)
+
+from des import build_model, simulate
+def des_model(group, rnd, data_json):
+    d = json.loads(data_json)
+    m = build_model(d["events"], d["flows"], d["limits"], group, rnd)
+    m.pop("times", None)
+    return json.dumps(m, ensure_ascii=False, default=str)
+def des_run(group, rnd, data_json, params_json):
+    d, p = json.loads(data_json), json.loads(params_json)
+    m = build_model(d["events"], d["flows"], d["limits"], group, rnd)
+    return json.dumps(simulate(m, **p), ensure_ascii=False, default=str)
 `);
       const fn = py.globals.get("run_compute");
-      return { version: py.version, compute: (tick, ev, fl, md) => JSON.parse(fn(tick, JSON.stringify(ev), JSON.stringify(fl), JSON.stringify(md))) };
+      const fModel = py.globals.get("des_model");
+      const fRun = py.globals.get("des_run");
+      return {
+        version: py.version,
+        compute: (tick, ev, fl, md) => JSON.parse(fn(tick, JSON.stringify(ev), JSON.stringify(fl), JSON.stringify(md))),
+        desModel: (g, r, data) => JSON.parse(fModel(g, r, JSON.stringify(data))),
+        desRun: (g, r, data, params) => JSON.parse(fRun(g, r, JSON.stringify(data), JSON.stringify(params))),
+      };
     })();
     pyReady.catch(() => { pyReady = null; });
     return pyReady;
@@ -66,6 +89,7 @@ def run_compute(tick, events_json, flows_json, modes_json):
   const results = [];   // 最新的在前面，最多保留 30 筆
   const status = { running: false, paused: false, tick: 0, run_id: null, last_check_at: null, last_check: "", message: "" };
   let timer = null, lastSig = null, checked = 0, nextId = 1, busy = false;
+  let lastData = null;   // 最近一次從資料庫讀到的資料（離散事件模擬直接用，不用再讀一次）
   const nowIso = () => new Date().toISOString();
   const runIdNow = () => { const d = new Date(Date.now() + 8 * 3600e3); return d.toISOString().slice(5, 16).replace(/[-T:]/g, (c) => (c === "T" ? "-" : "")); };
   function addResult(r) {
@@ -77,9 +101,10 @@ def run_compute(tick, events_json, flows_json, modes_json):
     if (busy) return;
     busy = true;
     try {
-      const [events, flows, modes] = await Promise.all([fetchEvents(), fetchFlows(), fetchModes()]);
+      const [events, flows, modes, limits] = await Promise.all([fetchEvents(), fetchFlows(), fetchModes(), fetchLimits()]);
+      lastData = { events, flows, limits };
       // 指紋：筆數、最晚完工時間、流程、目前場次——有任何改變才重新計算
-      const sig = JSON.stringify([events.length, events.reduce((m, e) => (String(e.finish_time) > m ? String(e.finish_time) : m), ""), flows, modes]);
+      const sig = JSON.stringify([events.length, events.reduce((m, e) => (String(e.finish_time) > m ? String(e.finish_time) : m), ""), flows, modes, limits]);
       checked += 1;
       if (!force && sig === lastSig) {
         status.last_check_at = nowIso();
@@ -109,7 +134,18 @@ def run_compute(tick, events_json, flows_json, modes_json):
     timer = setInterval(() => step().catch(() => {}), INTERVAL_MS);
   }
 
+  async function desData() {
+    if (!lastData) {
+      const [events, flows, limits] = await Promise.all([fetchEvents(), fetchFlows(), fetchLimits()]);
+      lastData = { events, flows, limits };
+    }
+    return lastData;
+  }
+
   window.BrowserEngine = {
+    // 離散事件模擬：model = 看模型（工站、流程、作業時間、緩衝區上限），simulate = 跑模擬
+    async desModel(group, round) { const py = await loadPython(); return py.desModel(group, round, await desData()); },
+    async simulate(group, round, params) { const py = await loadPython(); return py.desRun(group, round, await desData(), params); },
     pythonInfo: () => (pyReady ? "載入中或已載入" : "尚未載入"),
     loadPython,
     // 打開網頁先算一次（跟 Render 的 startup_snapshot 一樣），不算在執行次數裡

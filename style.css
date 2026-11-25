@@ -65,3 +65,15 @@ select{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--li
 #stationTable tr.hl td{background:color-mix(in srgb,#f59e0b 18%,transparent)}
 #stationTable td,#stationTable th{text-align:right}
 #stationTable td:first-child,#stationTable th:first-child{text-align:left}
+/* 離散事件模擬 */
+.des-params{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px}
+.des-params label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);flex:1 1 150px}
+.des-params input,.des-params select{min-width:0;width:100%;flex:none}
+.des-in{width:76px;flex:none;padding:4px 6px;text-align:right}
+#desStations td,#desStations th{text-align:left;vertical-align:middle}
+#desStats small{font-weight:400;color:var(--muted);font-size:12px}
+.des-h3{font-size:15px;margin:18px 0 8px}
+.des-bar{display:inline-block;width:70px;height:8px;border-radius:4px;background:var(--line);margin-right:6px;vertical-align:middle;overflow:hidden}
+.des-bar i{display:block;height:100%}
+tr.des-bn td{background:var(--hl)}
+#desStTable td,#desStTable th{text-align:right}#desStTable td:first-child,#desStTable th:first-child{text-align:left}

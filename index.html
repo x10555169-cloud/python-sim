@@ -64,6 +64,44 @@
       </div>
     </section>
 
+    <section class="card" id="desCard" hidden>
+      <h2>離散事件模擬 <span class="sub">（Discrete-Event Simulation：用這一場的實際作業時間建立模型，讓電腦「假裝生產」很多次，預測「如果……會怎樣」。Python 程式：des.py）</span></h2>
+      <p class="hint" id="desTarget"></p>
+      <div class="des-params">
+        <label>要生產幾組<input id="desN" type="number" min="1" max="200" value="10"></label>
+        <label>重複模擬次數<input id="desR" type="number" min="10" max="2000" value="200"></label>
+        <label>作業時間
+          <select id="desMode">
+            <option value="sample">從實際紀錄隨機抽（有波動）</option>
+            <option value="mean">固定用平均值（沒有波動）</option>
+          </select></label>
+        <label>站間 WIP 上限
+          <select id="desWip">
+            <option value="db">資料庫設定（沒設定用 2）</option>
+            <option value="1">全部 1</option><option value="2">全部 2</option>
+            <option value="3">全部 3</option><option value="5">全部 5</option>
+            <option value="none">不限制</option>
+          </select></label>
+        <label>亂數種子<input id="desSeed" type="number" value="2026"></label>
+      </div>
+      <p class="hint">下表可以改「作業時間倍率」（例如 ST08 改成 50% = 動作改善後快一倍）和「人數」，再按「跑模擬」比較結果。</p>
+      <div class="table-wrap"><table id="desStations"></table></div>
+      <p class="hint" id="desModelNote"></p>
+      <div class="row round-actions">
+        <button id="desRun" class="primary" disabled>▶ 跑模擬</button>
+        <button id="desReset">還原預設</button>
+        <span class="hint" id="desMsg" role="status"></span>
+      </div>
+      <div id="desResult" hidden>
+        <dl class="stats" id="desStats"></dl>
+        <h3 class="des-h3">各站模擬結果 <span class="sub">（利用率 + 阻塞 + 閒置 = 100%）</span></h3>
+        <div class="table-wrap"><table id="desStTable"></table></div>
+        <h3 class="des-h3">站間緩衝區（在製品）</h3>
+        <div class="table-wrap"><table id="desBufTable"></table></div>
+        <p class="hint" id="desNote"></p>
+      </div>
+    </section>
+
     <section class="card" id="roundCard">
       <h2>場次紀錄 <span class="sub" id="roundSub"></span></h2>
       <p class="hint" id="roundHint"></p>
@@ -84,5 +122,6 @@
   <script src="config.js"></script>
   <script src="browser_engine.js"></script>
   <script src="app.js"></script>
+  <script src="des_ui.js"></script>
 </body>
 </html>
