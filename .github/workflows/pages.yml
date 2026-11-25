@@ -24,6 +24,7 @@ jobs:
             cp *.xlsx backend/data/ie_chair_data.xlsx
             cp index.html style.css app.js config.js frontend/
             [ -f docs.html ] && cp docs.html frontend/ || true
+            [ -f api.html ] && cp api.html frontend/ || true
           fi
           ls -R backend frontend
       - uses: actions/setup-python@v6
