@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>多管道參數化 API Dashboard（改良版）</title>
+  <title>多管道參數化 API 與工站網路圖 Dashboard 系統</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -416,7 +416,7 @@
         <h1>
           🗄️ 中繼快取資料庫 ＆ 多管道參數化 API 系統
           <span class="badge">對應手繪架構：Subas ➔ ta1 / ta2 / ta3 ➔ Api1~3 & ApiFlow</span>
-          <span class="badge" style="background:#dcfce7;color:#166534;">改良版：公式對齊老師即時監控中心</span>
+          <a href="./" style="font-size:13px; font-weight:bold; margin-left:8px; padding:4px 10px; border:1px solid #2563eb; border-radius:999px; color:#2563eb; text-decoration:none;">🐍 Python 生產線分析 ➔</a>
         </h1>
         <div class="controls">
           <label>
@@ -545,17 +545,12 @@
         <div class="kpi-box">
           <div class="kpi-label">完工事件總筆數</div>
           <div class="kpi-value" id="kpiTotalEvents">0 筆</div>
-          <div class="kpi-sub">分頁讀取，不受 1000 筆限制</div>
+          <div class="kpi-sub">單次讀取上限保護：1000 筆</div>
         </div>
         <div class="kpi-box success">
           <div class="kpi-label">終點站產出成品數</div>
           <div class="kpi-value" id="kpiFinalOutput">0 組</div>
           <div class="kpi-sub" id="kpiFinalStation">終點工站：--</div>
-        </div>
-        <div class="kpi-box purple">
-          <div class="kpi-label">產線 Cycle Time（總耗時 ÷ 產出組數）</div>
-          <div class="kpi-value" id="kpiLineCycle">--</div>
-          <div class="kpi-sub" id="kpiLineCycleSub">選單一組別 + 單一場次時計算</div>
         </div>
         <div class="kpi-box bottleneck">
           <div class="kpi-label">瓶頸候選站（最高平均 CT）</div>
@@ -609,7 +604,6 @@
                 <th>組別</th>
                 <th>總完工事件數</th>
                 <th>終點站總成品數</th>
-                <th>產線 Cycle Time</th>
                 <th>全線平均 CT (秒)</th>
                 <th>瓶頸候選站 (最高平均 CT)</th>
                 <th>瓶頸站波動 (P90 / 標準差 SD)</th>
@@ -1008,54 +1002,31 @@
     // 【二、「有新增數據才抓取」雙引擎：Realtime 即時推播 + 增量異動探針】
     // ============================================================================
 
-    // 改良版：分頁讀取（每頁 1000 筆，讀到完為止）→ 全班資料超過 1000 筆也不會缺
-    const SB_HEADERS = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` };
-    const EVENT_SELECT = "id,group_id,station_id,product_id,start_time,finish_time,duration_sec,wip_before_start,wip_after_finish,status";
-    const WIP_SELECT = "id,group_id,station_id,input_wip,output_wip,updated_at";
-    const FLOW_SELECT = "id,group_id,station_id,station_name,next_station_id";
-
-    async function fetchAllRows(path) {
-      const out = [];
-      for (let offset = 0; ; offset += 1000) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}&limit=1000&offset=${offset}`, { headers: SB_HEADERS });
-        if (!res.ok) throw new Error(`${path.split("?")[0]} 讀取失敗 (HTTP ${res.status})`);
-        const rows = await res.json();
-        out.push(...rows);
-        if (rows.length < 1000) return out;
-      }
-    }
-    // 雲端 event 表目前總筆數（只問筆數，不抓資料）
-    async function fetchRemoteEventCount() {
-      try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/event?select=id&limit=1`, { headers: { ...SB_HEADERS, Prefer: "count=exact" } });
-        const n = parseInt(((res.headers.get("content-range") || "").split("/")[1]), 10);
-        return Number.isFinite(n) ? n : null;
-      } catch (e) { return null; }
-    }
-    function flowSignature(rows) {
-      return JSON.stringify(rows.map(r => [r.group_id, r.station_id, r.next_station_id]).sort());
-    }
-
     // 1. 初次載入（或手動強制重抓）：載入基準資料至中繼庫
     async function syncFromCloudSupabase(forceFull = false) {
       if (!forceFull && RelayDB.ta1_events.length > 0) {
         return checkAndFetchOnlyWhenNewData("定時異動探測");
       }
 
-      try {
-        const [evRows, wipRows, flowRows] = await Promise.all([
-          fetchAllRows(`event?select=${EVENT_SELECT}&order=start_time.asc,id.asc`),
-          fetchAllRows(`station_wip?select=${WIP_SELECT}&order=id.asc`),
-          fetchAllRows(`station_flow?select=${FLOW_SELECT}&order=station_id.asc,id.asc`)
-        ]);
-        // ta4：雲端有 production_run 表就一起讀（沒有這張表也不影響）
-        try {
-          RelayDB.ta4_production_run = await fetchAllRows("production_run?select=*&order=started_at.asc");
-        } catch (e) {}
+      const headers = {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`
+      };
 
-        RelayDB.ta1_events = normalizeEventsToTaiwanTime(evRows);
-        RelayDB.ta2_station_wip = normalizeWipsToTaiwanTime(wipRows);
-        RelayDB.ta3_station_flow = flowRows;
+      try {
+        const [evRes, wipRes, flowRes] = await Promise.all([
+          fetch(`${SUPABASE_URL}/rest/v1/event?select=id,group_id,station_id,product_id,start_time,finish_time,duration_sec,wip_before_start,wip_after_finish,status&order=start_time.asc&limit=1000`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/station_wip?select=id,group_id,station_id,input_wip,output_wip,updated_at&limit=1000`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/station_flow?select=id,group_id,station_id,station_name,next_station_id&order=station_id.asc&limit=1000`, { headers })
+        ]);
+
+        if (!evRes.ok || !wipRes.ok || !flowRes.ok) {
+          throw new Error("雲端 Supabase 同步失敗");
+        }
+
+        RelayDB.ta1_events = normalizeEventsToTaiwanTime(await evRes.json());
+        RelayDB.ta2_station_wip = normalizeWipsToTaiwanTime(await wipRes.json());
+        RelayDB.ta3_station_flow = await flowRes.json();
         updateWatermarks();
 
         RelayDB.lastSyncAt = new Date();
@@ -1073,58 +1044,54 @@
     }
 
     // 2. 核心機制：先檢查「是否有比目前更新的資料」，有新增才抓那幾筆並更新畫面！
-    //    改良版：用「完工時間」判斷新資料（紀錄是在完工掃碼時才寫入雲端），往回多看 5 分鐘再用 id 去重，
-    //    另外核對雲端總筆數，對不上（有人刪除或補匯入舊資料）就整張重抓 → 不會漏抓
-    let probeRunning = false;
     async function checkAndFetchOnlyWhenNewData(triggerSource = "異動偵測") {
-      if (probeRunning) return;
-      probeRunning = true;
+      const headers = {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`
+      };
+
       try {
-        let evPath = `event?select=${EVENT_SELECT}&order=finish_time.asc,id.asc`;
-        if (RelayDB.lastFinishTime) {
-          const since = new Date(Date.parse(RelayDB.lastFinishTime) - 5 * 60 * 1000).toISOString();
-          evPath += `&finish_time=gte.${encodeURIComponent(since)}`;
+        // 只詢問雲端：「有沒有 start_time > 目前最新時間」的新增 event？
+        let evDeltaUrl = `${SUPABASE_URL}/rest/v1/event?select=id,group_id,station_id,product_id,start_time,finish_time,duration_sec,wip_before_start,wip_after_finish,status&order=start_time.asc`;
+        if (RelayDB.lastEventTime) {
+          evDeltaUrl += `&start_time=gt.${encodeURIComponent(RelayDB.lastEventTime)}`;
         }
-        let wipPath = `station_wip?select=${WIP_SELECT}&order=id.asc`;
+
+        // 只詢問雲端：「有沒有 updated_at > 目前最新時間」的異動 WIP？
+        let wipDeltaUrl = `${SUPABASE_URL}/rest/v1/station_wip?select=id,group_id,station_id,input_wip,output_wip,updated_at`;
         if (RelayDB.lastWipTime) {
-          wipPath += `&updated_at=gt.${encodeURIComponent(RelayDB.lastWipTime)}`;
+          wipDeltaUrl += `&updated_at=gt.${encodeURIComponent(RelayDB.lastWipTime)}`;
         }
 
-        const [newEvRaw, newWipRaw, flowRows, remoteCount] = await Promise.all([
-          fetchAllRows(evPath),
-          fetchAllRows(wipPath),
-          fetchAllRows(`station_flow?select=${FLOW_SELECT}&order=station_id.asc,id.asc`),
-          fetchRemoteEventCount()
+        const [newEvRes, newWipRes] = await Promise.all([
+          fetch(evDeltaUrl, { headers }),
+          fetch(wipDeltaUrl, { headers })
         ]);
-        const newEvents = normalizeEventsToTaiwanTime(newEvRaw);
-        const newWips = normalizeWipsToTaiwanTime(newWipRaw);
 
-        // 合併事件（以 id 去重），只算真正新增或內容有變的筆數
-        const evMap = new Map();
-        const keyOf = r => r.id || `${r.group_id}_${r.station_id}_${r.start_time}`;
-        RelayDB.ta1_events.forEach(r => evMap.set(keyOf(r), r));
-        let addedEv = 0;
-        newEvents.forEach(r => {
-          const old = evMap.get(keyOf(r));
-          if (!old || JSON.stringify(old) !== JSON.stringify(r)) addedEv += 1;
-          evMap.set(keyOf(r), r);
-        });
-        let mergedEvents = Array.from(evMap.values());
-        let fullReload = false;
-        if (remoteCount !== null && remoteCount !== mergedEvents.length) {
-          mergedEvents = normalizeEventsToTaiwanTime(await fetchAllRows(`event?select=${EVENT_SELECT}&order=start_time.asc,id.asc`));
-          fullReload = true;
-        }
-        const flowChanged = flowSignature(flowRows) !== flowSignature(RelayDB.ta3_station_flow);
+        if (!newEvRes.ok || !newWipRes.ok) return;
+
+        const newEvents = normalizeEventsToTaiwanTime(await newEvRes.json());
+        const newWips = normalizeWipsToTaiwanTime(await newWipRes.json());
 
         // 若完全沒有新增數據 ➔ 直接略過！不重抓舊資料、不重繪圖表
-        if (addedEv === 0 && newWips.length === 0 && !flowChanged && !fullReload) {
+        if (newEvents.length === 0 && newWips.length === 0) {
           RelayDB.skippedProbeCount += 1;
           updateRelayStatusUI();
           return;
         }
 
-        RelayDB.ta1_events = mergedEvents.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        // 有新增數據！只把新增的那幾筆合併進中繼庫 RelayDB (以 id 去重)
+        if (newEvents.length > 0) {
+          const evMap = new Map();
+          RelayDB.ta1_events.concat(newEvents).forEach(r => {
+            const key = r.id || `${r.group_id}_${r.station_id}_${r.start_time}`;
+            evMap.set(key, r);
+          });
+          RelayDB.ta1_events = Array.from(evMap.values()).sort(
+            (a, b) => new Date(a.start_time) - new Date(b.start_time)
+          );
+        }
+
         if (newWips.length > 0) {
           const wipMap = new Map();
           RelayDB.ta2_station_wip.concat(newWips).forEach(r => {
@@ -1133,15 +1100,11 @@
           });
           RelayDB.ta2_station_wip = Array.from(wipMap.values());
         }
-        if (flowChanged) RelayDB.ta3_station_flow = flowRows;
 
         updateWatermarks();
         RelayDB.deltaFetchCount += 1;
         RelayDB.lastSyncAt = new Date();
-        const parts = [`+${addedEv}筆事件`, `+${newWips.length}筆WIP`];
-        if (flowChanged) parts.push("流程有變更");
-        if (fullReload) parts.push(`雲端筆數 ${remoteCount} 對不上 ➔ 整張重抓`);
-        RelayDB.lastTriggerReason = `${triggerSource} (${parts.join(" / ")}) ➔ 已更新 relay_db.json`;
+        RelayDB.lastTriggerReason = `${triggerSource} (+${newEvents.length}筆事件 / +${newWips.length}筆WIP) ➔ 已更新 relay_db.json`;
 
         // 有新增數據時，立即將更新後的中繼庫寫入 relay_db.json！
         await persistRelayDbToJson();
@@ -1150,8 +1113,6 @@
         executeStudentApiQuery();
       } catch (err) {
         console.warn("增量偵測失敗:", err);
-      } finally {
-        probeRunning = false;
       }
     }
 
@@ -1208,14 +1169,9 @@
     }
 
     function updateWatermarks() {
-      // 改良版：記下「最晚的開工時間」（顯示用）與「最晚的完工時間」（判斷有沒有新資料用）
-      let maxStart = null, maxFinish = null;
-      RelayDB.ta1_events.forEach(r => {
-        if (r.start_time && (!maxStart || Date.parse(r.start_time) > Date.parse(maxStart))) maxStart = r.start_time;
-        if (r.finish_time && (!maxFinish || Date.parse(r.finish_time) > Date.parse(maxFinish))) maxFinish = r.finish_time;
-      });
-      RelayDB.lastEventTime = maxStart;
-      RelayDB.lastFinishTime = maxFinish;
+      if (RelayDB.ta1_events.length > 0) {
+        RelayDB.lastEventTime = RelayDB.ta1_events[RelayDB.ta1_events.length - 1].start_time;
+      }
       let maxWipTs = RelayDB.lastWipTime;
       RelayDB.ta2_station_wip.forEach(w => {
         if (w.updated_at && (!maxWipTs || new Date(w.updated_at) > new Date(maxWipTs))) {
@@ -1236,237 +1192,6 @@
       if (el3) el3.textContent = `已快取 ${RelayDB.ta3_station_flow.length} 筆流程連線 (Realtime: ${RelayDB.realtimeStatus})`;
       if (el4) el4.textContent = `中繼檔:${RelayDB.jsonFileSource} ｜ 初始:${RelayDB.cloudFullSyncCount}次 ｜ 新數據寫入JSON:${RelayDB.deltaFetchCount}次 ｜ 略過:${RelayDB.skippedProbeCount}次 ｜ 程式讀JSON:${RelayDB.studentApiCallCount}次`;
     }
-
-    // ============================================================================
-    // 【計算核心（改良版新增）】公式與老師「即時監控中心」、Python backend/simulation.py 完全相同
-    //   - 只算 status = COMPLETED 的紀錄
-    //   - 一律「同一組 + 同一場次」當成一條產線來算（場次選 ALL 時，各場次分開算再合計）
-    //   - 時間全部換成整數毫秒計算，四捨五入用「四捨五入到小數 1 位、5 一律進位」（同 Python ROUND_HALF_UP）
-    // ==== CORE START ====
-    const MAX_GAP_MS = 600 * 1000;          // 超過 600 秒的空檔不算等待（休息或換場）
-    const LONG_SPAN_MS = 3 * 3600 * 1000;   // 一個場次跨越超過 3 小時：多半混到不同天的資料
-
-    // 產品編號 → 場次：TEST2-P01 → TEST2；舊版 TEST-P01 → TEST1；P01（沒有 TEST）→ PROD（正式實作）
-    function roundOf(pid) {
-      const s = String(pid || "").trim().toUpperCase();
-      const m = s.match(/^TEST(\d+)-/);
-      if (m) return "TEST" + parseInt(m[1], 10);
-      if (s.startsWith("TEST")) return "TEST1";
-      return "PROD";
-    }
-    function roundSortKey(r) { return r === "PROD" ? 999 : (parseInt(String(r).slice(4), 10) || 998); }
-    function roundLabel(r) { return r === "PROD" ? "正式實作" : `第 ${String(r).slice(4)} 次測試`; }
-    function isCompleted(r) { return (r.status || "COMPLETED") === "COMPLETED"; }
-    function toMs(v) { if (v === null || v === undefined || v === "") return null; const t = Date.parse(v); return Number.isFinite(t) ? t : null; }
-    function durMs(r) { const n = Number(r.duration_sec); return Number.isFinite(n) ? Math.round(n * 1000) : 0; }
-
-    // 「num ÷ den 毫秒」換成秒並四捨五入到小數 1 位（整數運算，0.05 一律進位，跟手算一樣）
-    function r1ms(num, den = 1) {
-      if (!den) return 0;
-      const sign = (num < 0) !== (den < 0) ? -1 : 1;
-      const a = Math.abs(num), b = Math.abs(den) * 100;   // 100 毫秒 = 0.1 秒
-      return sign * Math.floor((2 * a + b) / (2 * b)) / 10;
-    }
-    // 「num ÷ den」四捨五入到整數（百分比用）
-    function r0(num, den) {
-      if (!den) return 0;
-      const sign = (num < 0) !== (den < 0) ? -1 : 1;
-      const a = Math.abs(num), b = Math.abs(den);
-      return sign * Math.floor((2 * a + b) / (2 * b));
-    }
-
-    // 流程候選順序（同老師 timer.html）：G01-T3 → G01-T2 → G01-T1 → G01；正式：G01-OFFICIAL → G01-T10 … G01-T1 → G01
-    function flowKeyCandidates(group, round) {
-      const keys = [];
-      if (round === "PROD") {
-        keys.push(`${group}-OFFICIAL`);
-        for (let r = 10; r >= 1; r--) keys.push(`${group}-T${r}`);
-      } else if (/^TEST\d+$/.test(round)) {
-        for (let r = parseInt(round.slice(4), 10); r >= 1; r--) keys.push(`${group}-T${r}`);
-      }
-      keys.push(group);
-      return keys;
-    }
-    function resolveFlow(group, round) {
-      for (const k of flowKeyCandidates(group, round)) {
-        const rows = RelayDB.ta3_station_flow.filter(f => String(f.group_id || "").trim() === k);
-        if (rows.length) return { key: k, rows };
-      }
-      return { key: null, rows: [] };
-    }
-    function edgesOf(flowRows) {
-      const set = new Set();
-      flowRows.forEach(f => {
-        const a = String(f.station_id || "").trim();
-        if (a) set.add(a + "\u0000" + String(f.next_station_id || "").trim());
-      });
-      return [...set].sort().map(s => s.split("\u0000"));
-    }
-    // 終點站：沒有任何「往下一站」連線的工站；有好幾個取編號最大的（同老師）
-    function terminalStation(edges) {
-      const nodes = new Set();
-      edges.forEach(([a, b]) => { nodes.add(a); if (b) nodes.add(b); });
-      const terms = [...nodes].filter(st => !edges.some(([a, b]) => a === st && b)).sort();
-      return terms.length ? terms[terms.length - 1] : null;
-    }
-    // 起點站：沒有前站送料進來的工站
-    function rootStations(edges) {
-      const nodes = new Set();
-      edges.forEach(([a, b]) => { nodes.add(a); if (b) nodes.add(b); });
-      return [...nodes].filter(st => !edges.some(([, b]) => b === st)).sort();
-    }
-
-    // 單一組別、單一場次（= 一條產線）的所有指標
-    function analyzeLine(rows, edges) {
-      const starts = rows.map(r => toMs(r.start_time)).filter(t => t !== null);
-      const ends = rows.map(r => toMs(r.finish_time)).filter(t => t !== null);
-      const lineStart = starts.length ? Math.min(...starts) : null;
-
-      // 1. 依工站分組、依開工時間排序：作業時間加總、等待時間（第一件從產線開跑算起；只算 0~600 秒）
-      const byStation = {};
-      rows.forEach(r => {
-        const st = String(r.station_id || "(未知)").trim();
-        (byStation[st] = byStation[st] || []).push(r);
-      });
-      const stations = Object.keys(byStation).sort();
-      const st = {};
-      const rowWaitMs = new Map();   // 每一筆紀錄自己的等待毫秒（明細表用）
-      stations.forEach(s => {
-        const evs = byStation[s].slice().sort((a, b) => (toMs(a.start_time) ?? 0) - (toMs(b.start_time) ?? 0));
-        let runMs = 0, waitMs = 0;
-        evs.forEach((r, i) => {
-          runMs += durMs(r);
-          const cur = toMs(r.start_time);
-          const prev = i === 0 ? lineStart : toMs(evs[i - 1].finish_time);
-          let w = 0;
-          if (cur !== null && prev !== null) {
-            const gap = cur - prev;
-            if (gap > 0 && gap < MAX_GAP_MS) w = gap;
-          }
-          waitMs += w;
-          rowWaitMs.set(r, w);
-        });
-        st[s] = { evs, n: evs.length, runMs, waitMs };
-      });
-
-      // 2. 瓶頸站：平均 Cycle Time 最大（用沒有四捨五入的值比；同分取編號小的）
-      let bottleneck = null;
-      stations.forEach(s => {
-        if (!st[s].n) return;
-        if (bottleneck === null || st[s].runMs * st[bottleneck].n > st[bottleneck].runMs * st[s].n) bottleneck = s;
-      });
-      const maxAvgSec = bottleneck ? st[bottleneck].runMs / st[bottleneck].n / 1000 : 0;
-      const sumAvgSec = stations.reduce((acc, s) => acc + (st[s].n ? st[s].runMs / st[s].n / 1000 : 0), 0);
-      const balancePct = maxAvgSec ? Math.floor((sumAvgSec / (stations.length * maxAvgSec)) * 1000 + 0.5 + 1e-9) / 10 : 0;
-
-      // 3. 產出：終點站的完工筆數；終點站還沒有完工紀錄時，暫用有完工的最後一站試算（標示未到終點）
-      const finalSt = terminalStation(edges) || (stations.length ? stations[stations.length - 1] : null);
-      let outputSt, reached;
-      if (finalSt && byStation[finalSt]) { outputSt = finalSt; reached = true; }
-      else { outputSt = stations.length ? stations[stations.length - 1] : null; reached = false; }
-      const outputEvs = outputSt ? (byStation[outputSt] || []) : [];
-      const outputSets = outputEvs.length;
-
-      // 4. 產線 Cycle Time = 總耗時 ÷ 產出組數；穩態間隔 = 產出站「首件完工 → 末件完工」÷（組數 − 1）
-      const totalMs = starts.length && ends.length ? Math.max(...ends) - Math.min(...starts) : 0;
-      const hasTakt = outputSets > 0 && totalMs > 0;
-      const outFin = outputEvs.map(r => toMs(r.finish_time)).filter(t => t !== null).sort((a, b) => a - b);
-
-      // 5. 在製品：起點站開工的產品數 − 終點站完成的產品數
-      const roots = rootStations(edges).filter(s => byStation[s]);
-      const rootList = roots.length ? roots : stations.slice(0, 1);
-      const started = new Set(rootList.flatMap(s => byStation[s].map(r => r.product_id)));
-      const finished = reached ? new Set(outputEvs.map(r => r.product_id)) : new Set();
-
-      const station_stats = {};
-      stations.forEach(s => {
-        const x = st[s];
-        station_stats[s] = {
-          qty: x.n,
-          run_sec: r1ms(x.runMs),
-          avg_ct: x.n ? r1ms(x.runMs, x.n) : 0,
-          wait_sec: r1ms(x.waitMs),
-          avg_wait: x.n ? r1ms(x.waitMs, x.n) : 0,
-          util_pct: x.runMs + x.waitMs > 0 ? r1ms(x.runMs * 100 * 1000, x.runMs + x.waitMs) : 0,
-          // 佔產線 Cycle Time 幾 %、差幾秒（同老師監控中心「與本次 Cycle Time 比較」欄）
-          pct_of_line: hasTakt && x.n ? r0(x.runMs * outputSets * 100, x.n * totalMs) : null,
-          vs_line_sec: hasTakt && x.n ? r1ms(x.runMs * outputSets - totalMs * x.n, x.n * outputSets) : null,
-          // 以下給畫面用（沒有四捨五入）
-          _runMs: x.runMs, _waitMs: x.waitMs
-        };
-      });
-
-      return {
-        events: rows.length,
-        stations,
-        station_stats,
-        bottleneck,
-        bottleneck_ct: bottleneck ? r1ms(st[bottleneck].runMs, st[bottleneck].n) : 0,
-        balance_pct: balancePct,
-        final_station: finalSt,
-        output_station: outputSt,
-        terminal_reached: reached,
-        output_sets: outputSets,
-        finished: reached ? outputSets : 0,
-        wip: Math.max(started.size - finished.size, 0),
-        total_sec: r1ms(totalMs),
-        elapsed_min: r1ms(totalMs, 60),
-        takt_sec: hasTakt ? r1ms(totalMs, outputSets) : null,     // 產線 Cycle Time（欄位名稱同 Python）
-        steady_sec: outFin.length >= 2 ? r1ms(outFin[outFin.length - 1] - outFin[0], outFin.length - 1) : null,
-        throughput_per_hr: hasTakt && reached ? r1ms(3600 * outputSets * 1000 * 1000, totalMs) : 0,
-        wait_sec: r1ms(stations.reduce((acc, s) => acc + st[s].waitMs, 0)),
-        long_span: totalMs > LONG_SPAN_MS,
-        first_start: starts.length ? toTaiwanIso(new Date(Math.min(...starts)).toISOString()) : null,
-        last_finish: ends.length ? toTaiwanIso(new Date(Math.max(...ends)).toISOString()) : null,
-        _rowWaitMs: rowWaitMs
-      };
-    }
-
-    // 某組某場次的完工紀錄（只算 COMPLETED）
-    function lineRows(group, round) {
-      return RelayDB.ta1_events.filter(r => isCompleted(r)
-        && String(r.group_id || "").trim() === group
-        && (round === "ALL" || roundOf(r.product_id) === round));
-    }
-    // 一組有資料的場次（依 TEST1、TEST2 … PROD 排序）
-    function roundsOfGroup(group) {
-      const set = new Set(RelayDB.ta1_events.filter(r => isCompleted(r) && String(r.group_id || "").trim() === group)
-        .map(r => roundOf(r.product_id)));
-      return [...set].sort((a, b) => roundSortKey(a) - roundSortKey(b));
-    }
-    function groupsWithData() {
-      return [...new Set(RelayDB.ta1_events.filter(isCompleted).map(r => String(r.group_id || "").trim()).filter(Boolean))].sort();
-    }
-    // 依「組別 + 場次」切成一條一條產線，各自計算（場次 ALL = 該組所有場次）
-    function buildLines(group, round) {
-      const groups = group === "ALL" ? groupsWithData() : [group];
-      const lines = [];
-      groups.forEach(g => {
-        const rounds = round === "ALL" ? roundsOfGroup(g) : [round];
-        rounds.forEach(rd => {
-          const rows = lineRows(g, rd);
-          if (!rows.length) return;
-          const flow = resolveFlow(g, rd);
-          const edges = edgesOf(flow.rows);
-          lines.push({ group_id: g, round: rd, round_label: roundLabel(rd), flow_key: flow.key, edges, rows, m: analyzeLine(rows, edges) });
-        });
-      });
-      return lines;
-    }
-    // 給 API 回傳用的產線摘要（拿掉內部欄位）
-    function lineSummary(ln) {
-      const { _rowWaitMs, station_stats, ...rest } = ln.m;
-      const ss = {};
-      Object.keys(station_stats).forEach(s => { const { _runMs, _waitMs, ...v } = station_stats[s]; ss[s] = v; });
-      return {
-        group_id: ln.group_id, round: ln.round, round_label: ln.round_label,
-        flow_key: ln.flow_key || "(無流程)", flow: ln.edges.map(([a, b]) => `${a}→${b || "終點"}`),
-        ...rest,
-        line_cycle_time_sec: rest.takt_sec,
-        station_stats: ss
-      };
-    }
-    // ==== CORE END ====
 
     // ============================================================================
     // 【三、多條參數化 API 管道定義（對應老師手繪圖 Api1, Api2, Api3, ApiFlow）】
@@ -1492,21 +1217,16 @@
     function ApiFlow(group = "G20", round = "TEST2") {
       RelayDB.studentApiCallCount += 1;
       updateRelayStatusUI();
-      return buildFlowModel(group, round);
-    }
 
-    // ApiFlow 與 Api1~3 共用：同一套流程、同一套燈號（改良版：兩邊的燈號、WIP 不會再互相矛盾）
-    function buildFlowModel(group = "G20", round = "TEST2") {
       const targetGroup = group === "ALL" ? "G20" : group;
-      // 場次 ALL：網路圖用該組「最後一個有資料的場次」的流程
-      const groupRounds = roundsOfGroup(targetGroup);
-      const flowRound = round === "ALL" ? (groupRounds[groupRounds.length - 1] || "ALL") : round;
-      const flowKey = getRoundFlowKey(targetGroup, flowRound);
+      const flowKey = getRoundFlowKey(targetGroup, round);
 
-      // 1. 流程：依老師的候選順序找（G23-T2 → G23-T1 → G23）；都沒有才用預設流程畫圖
-      const resolved = resolveFlow(targetGroup, flowRound);
-      let flowRows = resolved.rows;
-      let flowSource = resolved.key ? `station_flow：${resolved.key}` : "";
+      // 1. 從 ta3 (station_flow) 取出該組該場次的流程連線；
+      //    若無自訂 station_flow，則自動偵測該組實際出現的工站數（9站用雙層匯流圖；3/5/7站等其他站數自動依實際工站動態產生）
+      let flowRows = RelayDB.ta3_station_flow.filter(r => r.group_id === flowKey);
+      if (flowRows.length === 0) {
+        flowRows = RelayDB.ta3_station_flow.filter(r => r.group_id === targetGroup);
+      }
       if (flowRows.length === 0) {
         const activeStations = Array.from(new Set(
           filterEventsFromTa1(targetGroup, "ALL", round).map(e => e.station_id).filter(Boolean)
@@ -1524,7 +1244,6 @@
             { station_id: "ST07", next_station_id: "ST08" },
             { station_id: "ST08", next_station_id: "ST09" }
           ];
-          flowSource = "沒有設定流程 → 用預設 9 站流程畫圖";
         } else {
           // 若該組實際只有 3 站、5 站、7 站等其他站數，自動依實際工站串聯成對應站數
           flowRows = [];
@@ -1534,7 +1253,6 @@
           if (activeStations.length === 1) {
             flowRows.push({ station_id: activeStations[0], next_station_id: "" });
           }
-          flowSource = "沒有設定流程 → 依實際工站編號串聯畫圖";
         }
       }
 
@@ -1551,7 +1269,7 @@
         nodeSet.add(fromSt);
         if (toSt && toSt !== "END" && toSt !== "無") {
           nodeSet.add(toSt);
-          if (!edges.some(e => e.from === fromSt && e.to === toSt)) edges.push({ from: fromSt, to: toSt });
+          edges.push({ from: fromSt, to: toSt });
           if (!nextMap[fromSt]) nextMap[fromSt] = [];
           if (!nextMap[fromSt].includes(toSt)) nextMap[fromSt].push(toSt);
 
@@ -1560,20 +1278,7 @@
         }
       });
 
-      // 4. 從 ta1 (event) 統計：用計算核心（同一組 + 同一場次為一條產線；ALL 場次 = 各場次合計）
-      const lines = buildLines(targetGroup, round);
-      const stStats = {};
-      lines.forEach(ln => {
-        Object.entries(ln.m.station_stats).forEach(([st, s]) => {
-          if (!stStats[st]) stStats[st] = { count: 0, runMs: 0 };
-          stStats[st].count += s.qty;
-          stStats[st].runMs += s._runMs;
-        });
-      });
-      // 有紀錄但流程裡沒有的工站，也畫出來
-      Object.keys(stStats).forEach(st => nodeSet.add(st));
       const allStations = Array.from(nodeSet).sort((a, b) => a.localeCompare(b));
-      allStations.forEach(st => { if (!stStats[st]) stStats[st] = { count: 0, runMs: 0 }; });
 
       // 2. 計算拓樸層級 (column_level)：無前置站者為第 0 欄，其餘為 max(前置站層級) + 1
       const levelMap = {};
@@ -1606,19 +1311,27 @@
         }
       });
 
-      // 瓶頸：平均 CT 最大（用沒有四捨五入的值比，避免四捨五入後同分選錯站）
+      // 4. 從 ta1 (event) 統計該組、該場次各站的累計完工數與平均 Cycle Time
+      const groupEvents = filterEventsFromTa1(targetGroup, "ALL", round);
+      const stStats = {};
+      allStations.forEach(st => { stStats[st] = { count: 0, sumSec: 0, avgSec: 0 }; });
+      groupEvents.forEach(ev => {
+        const st = ev.station_id;
+        if (!stStats[st]) stStats[st] = { count: 0, sumSec: 0, avgSec: 0 };
+        stStats[st].count += 1;
+        stStats[st].sumSec += Number(ev.duration_sec) || 0;
+      });
+
+      let maxAvgCt = 0;
       let bottleneckStation = null;
-      allStations.forEach(st => {
+      Object.keys(stStats).forEach(st => {
         const s = stStats[st];
-        if (!s.count) return;
-        const b = bottleneckStation ? stStats[bottleneckStation] : null;
-        if (!b || s.runMs * b.count > b.runMs * s.count) bottleneckStation = st;
+        s.avgSec = s.count > 0 ? Number((s.sumSec / s.count).toFixed(1)) : 0;
+        if (s.count > 0 && s.avgSec > maxAvgCt) {
+          maxAvgCt = s.avgSec;
+          bottleneckStation = st;
+        }
       });
-      allStations.forEach(st => {
-        const s = stStats[st];
-        s.avgSec = s.count > 0 ? r1ms(s.runMs, s.count) : 0;
-      });
-      const maxAvgCt = bottleneckStation ? stStats[bottleneckStation].avgSec : 0;
 
       // 5. 組裝每個節點 (Nodes) 的顯示文字與燈號狀態（完全對齊右圖格式）
       const nodes = allStations.map(st => {
@@ -1689,7 +1402,6 @@
           output_wip: outWip,
           kit_ready_sets: isStart ? null : kitReadySets,
           wip_limit: isStart ? downstreamLimit : selfLimit,
-          downstream_limit: downstreamLimit,
           status_color: statusColor,
           line1_text: line1Text,
           line2_text: line2Text,
@@ -1701,144 +1413,118 @@
         api_channel: "ApiFlow(group, round)",
         group_id: targetGroup,
         round_filter: round,
-        flow_table_key: resolved.key || flowKey,
-        flow_source: flowSource,
+        flow_table_key: flowKey,
         bottleneck_station: bottleneckStation || "--",
         bottleneck_avg_sec: maxAvgCt,
-        lines_summary: lines.map(lineSummary),
         nodes,
         edges,
-        events: lines.flatMap(ln => ln.rows).sort((a, b) => (toMs(a.start_time) ?? 0) - (toMs(b.start_time) ?? 0))
+        events: groupEvents
       };
     }
 
-    // 共用中繼庫查詢核心（Api1 / Api2 / Api3）
+    // 共用中繼庫查詢核心
     function queryRelayEvents({ group, station, round, channelName }) {
       RelayDB.studentApiCallCount += 1;
       updateRelayStatusUI();
-      return buildQuery({ group, station, round, channelName });
-    }
 
-    function buildQuery({ group, station, round, channelName }) {
-      // 1. 先以「整條產線」（組別 + 場次）計算，再依工站篩選 → 等待時間、瓶頸跟老師監控中心一致
-      const lines = buildLines(group, round);
+      const filtered = filterEventsFromTa1(group, station, round);
 
-      // 2. 各站彙總（場次 ALL 時，各場次分開算等待，再合計）
-      const agg = {};
-      const enriched = [];
-      lines.forEach(ln => {
-        Object.entries(ln.m.station_stats).forEach(([st, s]) => {
-          if (!agg[st]) agg[st] = { count: 0, runMs: 0, waitMs: 0, durations: [] };
-          agg[st].count += s.qty;
-          agg[st].runMs += s._runMs;
-          agg[st].waitMs += s._waitMs;
-        });
-        ln.rows.forEach(r => {
-          const st = String(r.station_id || "(未知)").trim();
-          agg[st].durations.push(Number(r.duration_sec) || 0);
-          if (station !== "ALL" && st !== station) return;
-          const stSp = splitToTaiwanDateAndTime(r.start_time);
-          const fnSp = splitToTaiwanDateAndTime(r.finish_time);
-          enriched.push({
-            id: r.id,
-            group_id: r.group_id,
-            station_id: st,
-            product_id: r.product_id,
-            round: ln.round,
-            start_date: r.start_date || stSp.date,
-            start_clock: r.start_clock || stSp.clock,
-            finish_date: r.finish_date || fnSp.date,
-            finish_clock: r.finish_clock || fnSp.clock,
-            start_time: r.start_time,
-            finish_time: r.finish_time,
-            duration_sec: Number(r.duration_sec) || 0,
-            wait_sec: r1ms(ln.m._rowWaitMs.get(r) || 0)
-          });
-        });
+      // 依工站計算平均 CT 與等待時間
+      const stationMap = {};
+      const enriched = filtered.map(r => {
+        const st = r.station_id || "未知";
+        if (!stationMap[st]) stationMap[st] = [];
+        const prev = stationMap[st].length > 0 ? stationMap[st][stationMap[st].length - 1] : null;
+        let waitSec = 0;
+        if (prev && prev.finish_time && r.start_time) {
+          const gap = (new Date(r.start_time) - new Date(prev.finish_time)) / 1000;
+          if (gap > 0 && gap < 600) waitSec = Number(gap.toFixed(1));
+        }
+        const stSp = splitToTaiwanDateAndTime(r.start_time);
+        const fnSp = splitToTaiwanDateAndTime(r.finish_time);
+        const item = {
+          id: r.id,
+          group_id: r.group_id,
+          station_id: st,
+          product_id: r.product_id,
+          start_date: r.start_date || stSp.date,
+          start_clock: r.start_clock || stSp.clock,
+          finish_date: r.finish_date || fnSp.date,
+          finish_clock: r.finish_clock || fnSp.clock,
+          start_time: r.start_time,
+          finish_time: r.finish_time,
+          duration_sec: Number(r.duration_sec) || 0,
+          wait_sec: waitSec
+        };
+        stationMap[st].push(item);
+        return item;
       });
-      enriched.sort((a, b) => (toMs(a.start_time) ?? 0) - (toMs(b.start_time) ?? 0));
 
-      // 瓶頸：用全部工站比（就算 Api2 只查一站，也標出整條線的瓶頸是不是這站）
-      const allSt = Object.keys(agg).sort((a, b) => a.localeCompare(b));
+      const stKeysSorted = Object.keys(stationMap).sort((a, b) => a.localeCompare(b));
+      let maxAvgCycle = 0;
       let bottleneckStation = null;
-      allSt.forEach(st => {
-        const s = agg[st];
-        if (!s.count) return;
-        const b = bottleneckStation ? agg[bottleneckStation] : null;
-        if (!b || s.runMs * b.count > b.runMs * s.count) bottleneckStation = st;
-      });
-      const maxAvgCycle = bottleneckStation ? r1ms(agg[bottleneckStation].runMs, agg[bottleneckStation].count) : 0;
 
-      // 3. 燈號與 WIP：跟 ApiFlow 網路圖用同一套流程計算
-      const flowModel = group === "ALL" ? null : buildFlowModel(group, round);
-      const nodeOf = {};
-      (flowModel ? flowModel.nodes : []).forEach(n => { nodeOf[n.id] = n; });
-      const single = lines.length === 1 ? lines[0] : null;
-
-      const stKeysSorted = allSt.filter(st => station === "ALL" || st === station);
-      const stationsSummary = stKeysSorted.map(st => {
-        const s = agg[st];
-        const durations = s.durations.filter(n => n > 0).sort((a, b) => a - b);
-        const count = s.count;
-        const mean = count > 0 ? s.runMs / count / 1000 : 0;
+      const stationsSummary = stKeysSorted.map((st, idx) => {
+        const list = stationMap[st];
+        const durations = list.map(x => x.duration_sec).filter(n => n > 0).sort((a, b) => a - b);
+        const count = list.length;
+        const sum = durations.reduce((a, b) => a + b, 0);
+        const avg = count > 0 ? Number((sum / count).toFixed(2)) : 0;
         const min = durations.length > 0 ? durations[0] : 0;
         const max = durations.length > 0 ? durations[durations.length - 1] : 0;
         const variance = durations.length > 0
-          ? durations.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / durations.length
+          ? durations.reduce((acc, v) => acc + Math.pow(v - avg, 2), 0) / durations.length
           : 0;
         const std = Number(Math.sqrt(variance).toFixed(2));
         const p90Idx = durations.length > 0 ? Math.min(durations.length - 1, Math.floor(durations.length * 0.9)) : 0;
         const p90 = durations.length > 0 ? durations[p90Idx] : 0;
-        const ls = single ? single.m.station_stats[st] : null;
-        const node = nodeOf[st];
 
-        let light = "GREEN", label = "🟢 正常流暢";
-        if (!node) {
-          label = group === "ALL" ? "（全班彙總，不判斷燈號）" : "🟢 正常流暢";
-        } else if (!node.is_terminal && node.output_wip >= node.downstream_limit) {
-          light = "PURPLE";
-          label = `🟣 滿載阻塞 (送往下一站待領 ${node.output_wip}/${node.downstream_limit})`;
-        } else if (!node.is_start && node.kit_ready_sets === 0) {
-          light = "YELLOW";
-          label = "🟡 飢餓缺料 (站前可開工 0)";
+        if (avg > maxAvgCycle) {
+          maxAvgCycle = avg;
+          bottleneckStation = st;
         }
+
+        const prevCount = idx > 0 ? stationMap[stKeysSorted[idx - 1]].length : null;
+        const nextCount = idx < stKeysSorted.length - 1 ? stationMap[stKeysSorted[idx + 1]].length : null;
+        const estWipIn = idx === 0 ? null : Math.max(0, prevCount - count);
+        const estWipOut = nextCount !== null ? Math.max(0, count - nextCount) : 0;
 
         return {
           station_id: st,
           completed_count: count,
-          avg_cycle_sec: count > 0 ? r1ms(s.runMs, count) : 0,
+          avg_cycle_sec: avg,
           min_cycle_sec: min,
           max_cycle_sec: max,
           std_cycle_sec: std,
           p90_cycle_sec: p90,
-          total_run_sec: r1ms(s.runMs),
-          wait_sec: r1ms(s.waitMs),
-          avg_wait_sec: count > 0 ? r1ms(s.waitMs, count) : 0,
-          util_pct: s.runMs + s.waitMs > 0 ? r1ms(s.runMs * 100 * 1000, s.runMs + s.waitMs) : 0,
-          pct_of_line: ls ? ls.pct_of_line : null,     // 佔產線 Cycle Time %（只在單一場次時有）
-          vs_line_sec: ls ? ls.vs_line_sec : null,
-          estimated_wip_in: node ? (node.is_start ? null : node.kit_ready_sets) : null,
-          estimated_wip_out: node ? node.output_wip : 0,
-          wip_limit: node ? node.downstream_limit : 2,
-          is_start: node ? node.is_start : false,
-          is_terminal: node ? node.is_terminal : false,
-          is_bottleneck: st === bottleneckStation && maxAvgCycle > 0,
-          light_status: light,
-          light_label: label
+          estimated_wip_in: estWipIn,
+          estimated_wip_out: estWipOut,
+          wip_limit: 2,
+          is_bottleneck: false,
+          light_status: "GREEN",
+          light_label: "🟢 正常流暢"
         };
       });
 
-      const summaries = lines.map(lineSummary);
+      stationsSummary.forEach((s, idx) => {
+        if (s.station_id === bottleneckStation && maxAvgCycle > 0) {
+          s.is_bottleneck = true;
+        }
+        if (idx < stationsSummary.length - 1 && s.estimated_wip_out >= s.wip_limit) {
+          s.light_status = "PURPLE";
+          s.light_label = `🟣 滿載阻塞 (送往下一站待領 ${s.estimated_wip_out}/${s.wip_limit})`;
+        } else if (idx > 0 && s.estimated_wip_in === 0) {
+          s.light_status = "YELLOW";
+          s.light_label = "🟡 飢餓缺料 (站前待工 0 件)";
+        }
+      });
+
       return {
         api_channel: channelName,
         query_params: { group, station, round },
         total_records: enriched.length,
         bottleneck_station: bottleneckStation || "--",
         bottleneck_avg_sec: maxAvgCycle,
-        // 產線指標：單一組別 + 單一場次時才有（產出組數、產線 Cycle Time、平衡率…）
-        line_metrics: single ? summaries[0] : null,
-        // 每一條產線（組別 + 場次）各自的指標；場次選 ALL 時會有好幾條
-        lines_summary: summaries,
         stations_summary: stationsSummary,
         data: enriched
       };
@@ -1852,24 +1538,23 @@
       let combinedEvents = [];
 
       targetGroups.forEach(g => {
-        const fullGroupRes = buildQuery({
+        const fullGroupRes = queryRelayEvents({
           group: g,
           station: "ALL",
           round,
           channelName: `ApiCompare_Sub(${g})`
         });
+        // 避免子查詢重複累加次數，扣回
+        RelayDB.studentApiCallCount = Math.max(1, RelayDB.studentApiCallCount - 1);
 
         fullGroupRes.stations_summary.forEach(s => allStationsSet.add(s.station_id));
+        const finalSt = fullGroupRes.stations_summary.length > 0
+          ? fullGroupRes.stations_summary[fullGroupRes.stations_summary.length - 1]
+          : null;
         const bottleObj = fullGroupRes.stations_summary.find(s => s.is_bottleneck) || null;
         const avgAllStations = fullGroupRes.stations_summary.length > 0
           ? Number((fullGroupRes.stations_summary.reduce((a, b) => a + b.avg_cycle_sec, 0) / fullGroupRes.stations_summary.length).toFixed(2))
           : 0;
-        // 產出：依流程的終點站（單一場次）；場次 ALL = 各場次產出合計
-        const ls = fullGroupRes.lines_summary;
-        const lm = fullGroupRes.line_metrics;
-        const outputSets = ls.reduce((a, l) => a + l.output_sets, 0);
-        const outputStation = lm ? lm.output_station : (ls.length ? "各場次合計" : "--");
-        const reached = ls.length > 0 && ls.every(l => l.terminal_reached);
 
         const filteredForStation = station === "ALL"
           ? fullGroupRes.data
@@ -1880,18 +1565,13 @@
         groupsResult[g] = {
           group_id: g,
           total_records: fullGroupRes.total_records,
-          final_output_sets: outputSets,
-          final_station_id: outputStation,
-          terminal_reached: reached,
-          line_cycle_time_sec: lm ? lm.takt_sec : null,          // 產線 Cycle Time（單一場次時）
-          long_span: lm ? lm.long_span : false,
-          balance_pct: lm ? lm.balance_pct : null,
+          final_output_sets: finalSt ? finalSt.completed_count : 0,
+          final_station_id: finalSt ? finalSt.station_id : "--",
           overall_avg_ct_sec: avgAllStations,
           bottleneck_station: fullGroupRes.bottleneck_station,
           bottleneck_avg_sec: fullGroupRes.bottleneck_avg_sec,
           bottleneck_p90_sec: bottleObj ? bottleObj.p90_cycle_sec : 0,
           bottleneck_std_sec: bottleObj ? bottleObj.std_cycle_sec : 0,
-          lines_summary: ls,
           stations_summary: fullGroupRes.stations_summary,
           station_filtered_data: filteredForStation
         };
@@ -1953,37 +1633,27 @@
       executeStudentApiQuery();
     }
 
-    // 依組別、工站、場次篩選完工紀錄（改良版：只算 COMPLETED；場次支援 TEST1~TEST10 與 PROD）
     function filterEventsFromTa1(group, station, round) {
       return RelayDB.ta1_events.filter(r => {
-        if (!isCompleted(r)) return false;
-        if (group !== "ALL" && String(r.group_id || "").trim() !== group) return false;
-        if (station !== "ALL" && String(r.station_id || "").trim() !== station) return false;
-        if (round !== "ALL" && roundOf(r.product_id) !== round) return false;
+        if (group !== "ALL" && r.group_id !== group) return false;
+        if (station !== "ALL" && r.station_id !== station) return false;
+        if (round !== "ALL") {
+          const pid = String(r.product_id || "").toUpperCase();
+          if (round === "TEST1" && !(pid.startsWith("TEST1-") || pid.startsWith("TEST-"))) return false;
+          if (round === "TEST2" && !pid.startsWith("TEST2-")) return false;
+          if (round === "TEST3" && !pid.startsWith("TEST3-")) return false;
+          if (round === "PROD" && pid.startsWith("TEST")) return false;
+        }
         return true;
       });
     }
 
     function getRoundFlowKey(group, round) {
+      if (round === "TEST1") return `${group}-T1`;
+      if (round === "TEST2") return `${group}-T2`;
+      if (round === "TEST3") return `${group}-T3`;
       if (round === "PROD") return `${group}-OFFICIAL`;
-      if (/^TEST\d+$/.test(round)) return `${group}-T${round.slice(4)}`;
       return group;
-    }
-
-    // 場次下拉選單：固定有 TEST1~3、PROD，資料裡出現其他場次（例如 TEST4）時自動加上
-    function refreshRoundOptions() {
-      const sel = document.getElementById("paramRound");
-      if (!sel) return;
-      const set = new Set(["TEST1", "TEST2", "TEST3", "PROD"]);
-      RelayDB.ta1_events.forEach(r => { if (isCompleted(r)) set.add(roundOf(r.product_id)); });
-      const rounds = [...set].sort((a, b) => roundSortKey(a) - roundSortKey(b));
-      const want = ["ALL", ...rounds].join(",");
-      if (sel.dataset.rounds === want) return;
-      const cur = sel.value || "ALL";
-      sel.innerHTML = `<option value="ALL">ALL (全部場次，各場次分開算再合計)</option>` +
-        rounds.map(r => `<option value="${r}">${r} (${roundLabel(r)})</option>`).join("");
-      sel.value = rounds.includes(cur) ? cur : "ALL";
-      sel.dataset.rounds = want;
     }
 
     // 管道 6：WIP 時間軸與缺料分析專用 ApiWip(group, round, buffer)
@@ -2722,7 +2392,6 @@
     }
 
     function executeStudentApiQuery() {
-      refreshRoundOptions();
       const g = paramGroup.value;
       const st = document.getElementById("paramStation").value;
       const rd = document.getElementById("paramRound").value;
@@ -2815,11 +2484,6 @@
       let maxOutput = -1;
       let minOverallCt = Infinity;
       let maxBottleCt = -1;
-      let minLineCt = Infinity;   // 只比：已到終點站、沒有跨越 3 小時的組（同 Python 排名規則）
-      grpKeys.forEach(g => {
-        const gp0 = cmpPayload.groups[g];
-        if (gp0.line_cycle_time_sec && gp0.terminal_reached && !gp0.long_span && gp0.line_cycle_time_sec < minLineCt) minLineCt = gp0.line_cycle_time_sec;
-      });
       grpKeys.forEach(g => {
         const gp = cmpPayload.groups[g];
         if (gp.final_output_sets > maxOutput) maxOutput = gp.final_output_sets;
@@ -2832,9 +2496,6 @@
       pkTbody.innerHTML = grpKeys.map(g => {
         const gp = cmpPayload.groups[g];
         const badges = [];
-        if (gp.line_cycle_time_sec && gp.line_cycle_time_sec === minLineCt) {
-          badges.push(`<span style="background:#ede9fe;color:#5b21b6;padding:2px 7px;border-radius:4px;font-weight:bold;font-size:11.5px;">🏁 產線 Cycle Time 最短</span>`);
-        }
         if (gp.final_output_sets > 0 && gp.final_output_sets === maxOutput) {
           badges.push(`<span style="background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-weight:bold;font-size:11.5px;">🏆 產量最高</span>`);
         }
@@ -2848,8 +2509,7 @@
           <tr>
             <td><b style="font-size:14px; color:#1e40af;">${g}</b></td>
             <td>${gp.total_records} 筆</td>
-            <td><b style="color:#16a34a; font-size:14px;">${gp.final_output_sets} 組</b> <span style="color:#64748b;font-size:11px;">(${gp.final_station_id}${gp.terminal_reached ? "" : "，未到終點"})</span></td>
-            <td>${gp.line_cycle_time_sec ? `<b>${gp.line_cycle_time_sec} 秒</b>${gp.long_span ? ' <span title="跨越超過 3 小時" style="color:#b45309;">⚠️</span>' : ""}` : `<span style="color:#64748b;font-size:11.5px;">${selRound === "ALL" ? "選單一場次" : "--"}</span>`}</td>
+            <td><b style="color:#16a34a; font-size:14px;">${gp.final_output_sets} 組</b> <span style="color:#64748b;font-size:11px;">(${gp.final_station_id})</span></td>
             <td><b>${gp.overall_avg_ct_sec} 秒</b></td>
             <td><b style="color:#dc2626;">${gp.bottleneck_station} (${gp.bottleneck_avg_sec}s)</b></td>
             <td>P90: <b>${gp.bottleneck_p90_sec}s</b> ｜ SD: <b>${gp.bottleneck_std_sec}s</b></td>
@@ -3122,25 +2782,9 @@
 
       // 更新左圖的 4 大 KPI 摘要卡片與 9 站狀態網格
       document.getElementById("kpiTotalEvents").textContent = `${rows.length} 筆`;
-      // 改良版：產出 = 流程終點站的完工筆數（場次 ALL = 各場次合計）；終點站還沒有紀錄時標示「未到終點」
-      const lm = resObj.line_metrics;
-      const ls = resObj.lines_summary || [];
-      const outSets = ls.reduce((a, l) => a + l.output_sets, 0);
-      document.getElementById("kpiFinalOutput").textContent = `${outSets} 組`;
-      document.getElementById("kpiFinalStation").textContent = lm
-        ? `終點工站：${lm.final_station || "--"}${lm.terminal_reached ? "" : `（未到終點，暫用 ${lm.output_station} 試算）`}`
-        : (ls.length ? `${ls.length} 個場次合計：${ls.map(l => `${l.round} ${l.output_sets}組`).join("、")}` : "終點工站：--");
-      const lcEl = document.getElementById("kpiLineCycle");
-      const lcSub = document.getElementById("kpiLineCycleSub");
-      if (lcEl) {
-        if (lm && lm.takt_sec) {
-          lcEl.textContent = `${lm.takt_sec} 秒`;
-          lcSub.textContent = `總耗時 ${lm.total_sec} 秒 ÷ ${lm.output_sets} 組｜平衡率 ${lm.balance_pct}%` + (lm.long_span ? "｜⚠️ 跨越超過 3 小時" : "");
-        } else {
-          lcEl.textContent = "--";
-          lcSub.textContent = ls.length > 1 ? "場次 ALL：請選單一場次才能計算" : "選單一組別 + 單一場次時計算";
-        }
-      }
+      const finalStObj = summaries.length > 0 ? summaries[summaries.length - 1] : null;
+      document.getElementById("kpiFinalOutput").textContent = `${finalStObj ? finalStObj.completed_count : 0} 組`;
+      document.getElementById("kpiFinalStation").textContent = `終點工站：${finalStObj ? finalStObj.station_id : "--"}`;
 
       const bottleObj = summaries.find(s => s.is_bottleneck);
       if (bottleObj) {
@@ -3162,7 +2806,7 @@
               : s.light_status === "YELLOW"
               ? "yellow"
               : "green";
-            const wipInText = s.is_start ? "原料無限" : (s.estimated_wip_in === null ? "--" : `${s.estimated_wip_in} 件`);
+            const wipInText = idx === 0 ? "原料無限" : `${s.estimated_wip_in} 件`;
             return `
               <div class="st-card ${cls}">
                 <div class="st-head">

@@ -1,5 +1,6 @@
 # 每次 push 到 main：GitHub 執行 Python（讀 Excel → 分析）→ 把結果和網頁一起發佈到 GitHub Pages
 # 2026/11 更新：actions 換新版；上傳＋發佈用 GitHub 官方範本的組合（upload v3 + deploy v5）
+# 2026/11/25：不用 Render 也能跑——simulation.py 一起發佈到網頁，由瀏覽器裡的 Python 執行
 name: Run Python and deploy to GitHub Pages
 on:
   push:
@@ -24,8 +25,11 @@ jobs:
             cp *.xlsx backend/data/ie_chair_data.xlsx
             cp index.html style.css app.js config.js frontend/
             [ -f docs.html ] && cp docs.html frontend/ || true
+            [ -f browser_engine.js ] && cp browser_engine.js frontend/ || true
             [ -f api.html ] && cp api.html frontend/ || true
           fi
+          # 瀏覽器模式：網頁要讀同一個 simulation.py（Python 在瀏覽器裡執行，不用 Render）
+          cp backend/simulation.py frontend/simulation.py
           ls -R backend frontend
       - uses: actions/setup-python@v6
         with: { python-version: "3.12" }

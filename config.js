@@ -4,12 +4,14 @@ window.APP_CONFIG = {
   //   "static"   只需要 GitHub：顯示 GitHub Actions 上 Python 算好的 data/results.json（目標一、二）
   //   "api"      網頁直接連 FastAPI（本機測試，或 Render 部署好但沒有 Supabase）
   //   "supabase" 開始/停止走 FastAPI，結果從 Supabase 讀（Word 文件的完整架構）
-  MODE: "api",
+  //   "browser"  不用 Render：網頁直接用 API 讀資料庫（下面的 SUPABASE_URL / KEY），Python 在瀏覽器裡執行
+  MODE: "browser",
 
   // FastAPI 網址：本機 "http://localhost:8000"；Render 例如 "https://python-sim-api.onrender.com"
   API_BASE: "https://python-sim-api.onrender.com",
 
-  // Supabase 專案網址，例如 "https://abcdxyz.supabase.co"（MODE = "supabase" 才需要）
+  // Supabase 專案網址，例如 "https://abcdxyz.supabase.co"（MODE = "browser" 或 "supabase" 才需要）
+  // 換資料庫（例如換成甲班）：MODE = "browser" 時只要改這兩行；老師的 API Dashboard（api.html）要另外改它檔案裡的兩行
   SUPABASE_URL: "https://fqbsrcbxtmagczykoesv.supabase.co",
   // publishable key 可以公開放在前端（RLS 只允許讀取）
   SUPABASE_KEY: "sb_publishable_mn0CAB_nkrDycq6DS3Q2_g_-80SlWHB",

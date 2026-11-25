@@ -6,19 +6,24 @@
   const SB = (C.SUPABASE_URL || "").replace(/\/$/, "");
   const $ = (id) => document.getElementById(id);
   const tokenKey = "sim-admin-token";
-  const SOURCE_LABEL = { static: "GitHub Actions（Python）", api: "FastAPI", supabase: "Supabase" };
+  const SOURCE_LABEL = { static: "GitHub Actions（Python）", api: "FastAPI", supabase: "Supabase", browser: "瀏覽器裡的 Python" };
+  const BROWSER = MODE === "browser";   // 不用 Render：網頁直接用 API 讀資料庫，Python 在瀏覽器裡跑（browser_engine.js）
 
   // 導覽列：後端連結跟著 config.js 的 API_BASE
   $("lnkBackend").href = API || "#";
   $("lnkApiDocs").href = API ? `${API}/docs` : "#";
   if (C.REPO_URL) $("lnkRepo").href = C.REPO_URL;
-  if (!API) { $("lnkBackend").hidden = true; $("lnkApiDocs").hidden = true; }
+  if (!API || BROWSER) { $("lnkBackend").hidden = true; $("lnkApiDocs").hidden = true; }
 
   try { $("token").value = localStorage.getItem(tokenKey) || ""; } catch {}
   $("stSource").textContent = SOURCE_LABEL[MODE] || MODE;
   if (MODE === "static") {
     ["btnStart", "btnPause", "btnResume", "btnStop", "token"].forEach((id) => ($(id).hidden = true));
     $("apiMsg").textContent = "靜態模式：每次 push 到 GitHub，Actions 會重新執行 Python 並更新這頁。";
+  }
+  if (BROWSER) {
+    $("token").hidden = true;
+    $("apiMsg").textContent = "不經過 Render：網頁直接用 API 讀資料庫，Python（simulation.py）在你的瀏覽器裡計算。開始／暫停只影響你自己的畫面。";
   }
 
   // ---------- 讀資料 ----------
@@ -44,6 +49,10 @@
         sbGet("sim_status?select=*&id=eq.1"),
       ]);
       return { rows, st: st[0] || {} };
+    }
+    if (BROWSER) {
+      const [rows, st] = await Promise.all([BrowserEngine.results(30), BrowserEngine.status()]);
+      return { rows, st };
     }
     const [rows, st] = await Promise.all([apiCall("/results?limit=30"), apiCall("/status")]);
     return { rows, st };
@@ -435,10 +444,11 @@
   async function control(action) {
     const token = $("token").value.trim();
     try { localStorage.setItem(tokenKey, token); } catch {}
-    const doing = { start: "啟動中…（Render 免費方案休眠時，第一次可能要等 30–60 秒）", pause: "暫停中…", resume: "繼續中…", stop: "停止中…" };
+    const doing = { start: BROWSER ? "啟動中…（第一次要下載 Python，約 5–10 秒）" : "啟動中…（Render 免費方案休眠時，第一次可能要等 30–60 秒）", pause: "暫停中…", resume: "繼續中…", stop: "停止中…" };
     $("apiMsg").textContent = doing[action];
     try {
-      const res = await apiCall(`/${action}`, { method: "POST", headers: token ? { "X-Admin-Token": token } : {} });
+      const res = BROWSER ? await BrowserEngine[action]()
+        : await apiCall(`/${action}`, { method: "POST", headers: token ? { "X-Admin-Token": token } : {} });
       $("apiMsg").textContent = res.already_running ? "模擬已經在執行中" : {
         start: `已啟動，Run ID：${res.run_id}`,
         pause: `已暫停（第 ${res.tick} 次執行後），按「繼續模擬」會從這裡接著跑`,
@@ -463,4 +473,9 @@
   }
   refresh();
   setInterval(refresh, MODE === "static" ? 30000 : C.POLL_MS || 3000);
+  // 瀏覽器模式：打開網頁先下載 Python、讀資料庫、算一次（不用按開始也看得到結果）
+  if (BROWSER) {
+    $("latest").textContent = "正在下載 Python 並讀取資料庫…（第一次約 5–10 秒）";
+    BrowserEngine.snapshot().then(refresh).catch((e) => { $("latest").textContent = `Python 載入或讀取失敗：${e.message}`; });
+  }
 })();
