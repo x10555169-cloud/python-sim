@@ -13,19 +13,23 @@
   離散型（重抽樣）  每筆資料被抽中的機率都是 1/n，只會抽到出現過的值
   固定平均值        每件都用平均值（沒有波動，給教學比較用）
 
-二、資料來源（只用 status = COMPLETED 的已完成資料）：實務上每站至少 30 筆、最好 100 筆以上，
-  但一場只做 3～5 張椅子，所以可以選擇加入之前的資料：
+二、資料來源（只用 status = COMPLETED 的已完成資料，而且只用本組）：實務上每站至少 30 筆、最好 100 筆以上，
+  但一場只做 3～6 張椅子，所以可以選擇加入本組之前場次的資料：
   round   只用本場（即時：做完幾件就用幾筆）
-  group   本場 + 本組其他場次
-  class   本場 + 全班所有組的同一站
-  auto30  自動補到 30 筆：本場 → 不夠再加本組其他場次 → 還不夠再加全班同一站
+  group   本場 + 本組「流程相同」的其他場次
+  auto30  自動補到 30 筆：本場不夠時，依序加入本組「流程相同」的其他場次（場次近的優先），加到 30 筆為止
+  流程相同 = 兩場的工站連線（station_flow）完全一樣。不同場次可以有不同流程，流程不同時，
+  同一個工站編號做的事情可能不一樣（例如前站不同、組裝的零件不同），所以不加入。
+  任一場沒有設定流程時，無法確認相同，也不加入。
 
 三、產線模型（每一組 + 每一個場次）：
   工站與流程   station_flow（同老師的候選順序 T3 → T2 → T1 → 組別）；沒有流程時：
                有 ST09 → 老師網頁預設的 9 站組裝流程；否則依工站編號串聯
   合流（組裝） 有好幾個前站的工站，要每個前站各送來 1 件才能開工（齊套）
   起點站       原料無限，最多投入 N 件（N = 要生產的組數）
-  站間緩衝區   上限 = station_wip 的「下一站_LIMIT」，沒設定用 2（同老師網頁）；可改成不限制
+  站前在製品   每站前面的緩衝區（前站做好、本站還沒拿的半成品），每一站可以分別設定：
+               上限       = station_wip 的「ST05_LIMIT」，沒設定用 2（同老師網頁）；可改成不限制
+               開始時件數 = station_wip 的「ST05」列 input_wip（老師網頁的「站前半成品初始備料」），沒設定為 0
   阻塞         做完時下一站的緩衝區滿了 → 拿著成品等（佔住人手），直到有空位
   人數         每站幾個人（同時能做幾件），預設 1
   結束         終點站完成 N 組
@@ -38,6 +42,7 @@ from __future__ import annotations
 
 import heapq
 import random
+import re
 from collections import defaultdict, deque
 
 from simulation import analyze_line, edges_of, flow_for, round_label, round_of, round_sort_key, terminal_station
@@ -47,8 +52,8 @@ MIN_SAMPLES = 30     # 實務起點
 GOOD_SAMPLES = 100   # 理想
 DEFAULT_FLOW_9 = [("ST01", "ST05"), ("ST02", "ST05"), ("ST03", "ST06"), ("ST04", "ST06"),
                   ("ST05", "ST07"), ("ST06", "ST07"), ("ST07", "ST08"), ("ST08", "ST09")]
-SOURCE_LABEL = {"round": "只用本場已完成資料", "group": "本場 + 本組其他場次",
-                "class": "本場 + 全班同一站", "auto30": f"自動補到 {MIN_SAMPLES} 筆（本場 → 本組 → 全班）"}
+SOURCE_LABEL = {"round": "只用本場已完成資料", "group": "本場 + 本組流程相同的場次",
+                "auto30": f"自動補到 {MIN_SAMPLES} 筆（本組流程相同的場次，近的優先）"}
 
 
 # ---------------------------------------------------------------- 1. 經驗分布
@@ -102,16 +107,12 @@ def _durations(rows: list[dict], station: str) -> list[float]:
 def build_model(events: list[dict], flows: list[dict], limits: list[dict], group: str, rnd: str,
                 source: str = "round") -> dict:
     """從資料庫的資料建立某組某場次的模型（工站、流程、各站經驗分布、緩衝區上限、實際結果）。"""
-    source = source if source in SOURCE_LABEL else "round"
+    source = source if source in SOURCE_LABEL else ("group" if source == "class" else "round")
     done = [e for e in events if (e.get("status") or "COMPLETED") == "COMPLETED"]
-    rows = [e for e in done if (e.get("group_id") or "").strip() == group and round_of(e.get("product_id")) == rnd]
+    mine = [e for e in done if (e.get("group_id") or "").strip() == group]          # 只用本組
+    rows = [e for e in mine if round_of(e.get("product_id")) == rnd]               # 本場
     if not rows:
         return {"ok": False, "error": f"{group} {round_label(rnd)} 還沒有完工紀錄，無法建立模型"}
-    # 加入的資料：本組其他場次（場次近的優先）、全班其他組
-    group_other = sorted((e for e in done if (e.get("group_id") or "").strip() == group
-                          and round_of(e.get("product_id")) != rnd),
-                         key=lambda e: abs(round_sort_key(round_of(e.get("product_id"))) - round_sort_key(rnd)))
-    class_other = [e for e in done if (e.get("group_id") or "").strip() != group]
 
     flows_by_key: dict[str, list[dict]] = defaultdict(list)
     for f in flows or []:
@@ -134,35 +135,55 @@ def build_model(events: list[dict], flows: list[dict], limits: list[dict], group
     succs = {s: sorted(b for a, b in edges if a == s) for s in nodes}
     terminal = terminal_station([(a, b) for a, b in edges] + [(s, "") for s in nodes if not succs[s]])
 
-    # 各站的經驗分布資料：本場 + 依「資料來源」加入的資料
+    # 本組其他場次：只有「流程跟本場完全相同」的才可以加入（場次近的排前面）
+    my_sig = _flow_signature(real_edges)
+    other_rounds = sorted({round_of(e.get("product_id")) for e in mine} - {rnd},
+                          key=lambda r: (abs(round_sort_key(r) - round_sort_key(rnd)), round_sort_key(r)))
+    rounds_info = []
+    for r in other_rounds:
+        k_r, f_r = flow_for(flows_by_key, group, r)
+        sig_r = _flow_signature(edges_of(f_r))
+        if not my_sig:
+            same, why = False, "本場沒有設定流程，無法確認相同"
+        elif not sig_r:
+            same, why = False, "這一場沒有設定流程，無法確認相同"
+        elif sig_r == my_sig:
+            same, why = True, f"流程相同（{k_r}）"
+        else:
+            same, why = False, f"流程不同（{k_r}：{_flow_text(edges_of(f_r))}）"
+        r_rows = [e for e in mine if round_of(e.get("product_id")) == r]
+        rounds_info.append({"round": r, "label": round_label(r), "same_flow": same, "reason": why, "records": len(r_rows), "rows": r_rows})
+    usable = [ri for ri in rounds_info if ri["same_flow"]]
+
+    # 各站的經驗分布資料：本場 + 依「資料來源」加入的場次
     times: dict[str, list[float]] = {}
     stations = []
     lim = _wip_limits(limits, group, rnd)
+    init = _init_wip(limits, group, rnd)
     for s in nodes:
         own = _durations(rows, s)
-        grp = _durations(group_other, s)
-        cls = _durations(class_other, s)
         added, used = [], ["本場"]
-        if source == "group" or (source == "auto30" and len(own) < MIN_SAMPLES):
-            added += grp
-            if grp:
-                used.append("本組其他場次")
-        if source == "class" or (source == "auto30" and len(own) + len(added) < MIN_SAMPLES):
-            added += cls
-            if cls:
-                used.append("全班同一站")
+        if source in ("group", "auto30"):
+            for ri in usable:                                   # 場次近的先加
+                if source == "auto30" and len(own) + len(added) >= MIN_SAMPLES:
+                    break                                       # 自動補：已經夠 30 筆就不再加
+                d = _durations(ri["rows"], s)
+                if d:
+                    added += d
+                    used.append(ri["label"])
         pool = own + added
         times[s] = sorted(pool)
         o, a = _quart(own), _quart(added)
         diff = (abs(a["mean"] - o["mean"]) / o["mean"] * 100) if own and added and o["mean"] else None
         stations.append({
             "station": s, "preds": preds[s], "succs": succs[s],
-            "own": o, "added": a, "pool": _quart(pool), "used": used if added else ["本場"],
+            "own": o, "added": a, "pool": _quart(pool), "used": used,
             "level": level_of(len(pool)),
             "diff_pct": round(diff, 0) if diff is not None else None,
-            "diff_warn": diff is not None and diff > 30 and len(own) >= 3,   # 加入的資料平均差超過 30%：合併前要確認做法相同
+            "diff_warn": diff is not None and diff > 30 and len(own) >= 3,   # 流程相同但平均差超過 30%：可能做法改了，提醒確認
             "no_data": not pool,
             "wip_limit_in": lim.get(s, DEFAULT_WIP_LIMIT) if preds[s] else None,
+            "init_wip_in": init.get(s, 0) if preds[s] else None,
             "cdf": [round(x, 1) for x in sorted(pool)] if len(pool) <= 300 else
                    [round(empirical_continuous(sorted(pool), i / 100), 1) for i in range(101)],
         })
@@ -181,11 +202,43 @@ def build_model(events: list[dict], flows: list[dict], limits: list[dict], group
         "roots": [s for s in nodes if not preds[s]], "stations": stations, "times": times,
         "wip_limits": {s: lim.get(s, DEFAULT_WIP_LIMIT) for s in nodes if preds[s]},
         "wip_limit_source": "station_wip 的 _LIMIT 設定" if lim else f"沒有設定 → 預設 {DEFAULT_WIP_LIMIT}",
+        "init_wip": {s: init.get(s, 0) for s in nodes if preds[s]},
+        "init_wip_source": "老師設定的站前半成品初始備料" if any(init.get(s) for s in nodes if preds[s]) else "沒有設定 → 開始時站前都是 0 件",
         "missing_data": missing, "ignored_stations": [s for s in with_data if s not in nodes],
+        "other_rounds": [{k: v for k, v in ri.items() if k != "rows"} for ri in rounds_info],   # 本組其他場次：能不能加入、原因
         "min_samples": min((len(times[s]) for s in nodes if s not in missing), default=0),
         "actual": {k: actual[k] for k in ("output_sets", "total_sec", "takt_sec", "steady_sec", "bottleneck",
                                           "bottleneck_ct", "terminal_reached", "output_station", "events")},
     }
+
+
+def _flow_signature(edges: list[tuple[str, str]]) -> tuple:
+    """流程的「指紋」：（所有「工站 → 下一站」連線, 所有工站）；順序不影響，終點站有沒有單獨寫一列也不影響。
+    沒有流程 = 空的"""
+    links = frozenset((a, b) for a, b in edges if a and b)
+    stations = frozenset({a for a, _ in edges if a} | {b for _, b in edges if b})
+    return (links, stations) if stations else ()
+
+
+def _flow_text(edges: list[tuple[str, str]]) -> str:
+    return "、".join(f"{a}→{b}" for a, b in sorted(edges) if b) or "無"
+
+
+def _init_wip(rows: list[dict], group: str, rnd: str) -> dict[str, int]:
+    """station_wip 裡本場（例如 G09-T1）的「ST03」列 input_wip = 開始時 ST03 前面已經有幾件（套）半成品
+    （老師網頁「站前半成品初始備料」存在這裡）。沒有設定 = 0。"""
+    want = f"{group}-OFFICIAL" if rnd == "FORMAL" else f"{group}-T{rnd[4:]}"
+    out: dict[str, int] = {}
+    for r in rows or []:
+        sid = (r.get("station_id") or "").strip()
+        if (r.get("group_id") or "").strip() == want and re.fullmatch(r"ST\d+", sid):
+            try:
+                v = int(float(r.get("input_wip") or 0))
+            except (TypeError, ValueError):
+                v = 0
+            if v > 0:
+                out[sid] = v
+    return out
 
 
 def _wip_limits(limits: list[dict], group: str, rnd: str) -> dict[str, int]:
@@ -210,7 +263,7 @@ class LineSim:
     """事件驅動：時間直接跳到下一個「某站做完」的時刻，在那一刻更新所有狀態。"""
 
     def __init__(self, model: dict, n_sets: int, rng: random.Random, factor: dict, servers: dict,
-                 cap: dict, mode: str):
+                 cap: dict, mode: str, init: dict | None = None, record: bool = False):
         self.m, self.n, self.rng, self.mode = model, n_sets, rng, mode
         self.nodes = [s["station"] for s in model["stations"]]
         self.preds = {s["station"]: s["preds"] for s in model["stations"]}
@@ -234,6 +287,28 @@ class LineSim:
         self.buf_area = defaultdict(float)
         self.buf_max = defaultdict(int)
         self.last_t = 0.0
+        # 站前在製品：每一件半成品放進緩衝區的時刻（先進先出），用來算「在站前等了多久」
+        self.arr: dict[tuple, deque] = {e: deque() for e in self.buf}
+        self.wait_sum = defaultdict(float)                  # 各站前半成品等待時間合計
+        self.wait_n = defaultdict(int)                      # 各站拿走幾件
+        for v, k in (init or {}).items():                   # 開始時站前已經有 k 件（合流站：每個前站各 k 件 = k 套）
+            for p in self.preds.get(v, []):
+                self.buf[(p, v)] = int(k)
+                self.buf_max[(p, v)] = int(k)
+                self.arr[(p, v)].extend([0.0] * int(k))
+        self.st_max = {v: self.st_wip(v) for v in self.nodes if self.preds[v]}
+        self.record = record                                # 只有第 1 次模擬記錄在製品隨時間的變化（畫圖用）
+        self.timeline = {v: [(0.0, self.st_wip(v))] for v in self.nodes if self.preds[v]} if record else None
+
+    def st_wip(self, v: str) -> int:
+        """v 站前的在製品件數 = 每個前站送來、還沒被拿走的件數加總"""
+        return sum(self.buf[(p, v)] for p in self.preds[v])
+
+    def _note(self, v: str) -> None:                        # v 站前在製品有變化：更新最多件數、記錄時間軸
+        w = self.st_wip(v)
+        self.st_max[v] = max(self.st_max[v], w)
+        if self.record:
+            self.timeline[v].append((self.t, w))
 
     def sample(self, s: str) -> float:
         """從這站的經驗分布抽一個加工時間，再乘上作業時間倍率"""
@@ -260,10 +335,14 @@ class LineSim:
         for v in self.succs[s]:
             self.buf[(s, v)] += 1
             self.buf_max[(s, v)] = max(self.buf_max[(s, v)], self.buf[(s, v)])
+            self.arr[(s, v)].append(self.t)
+            self._note(v)
         for v in self.succs[s]:
             self.try_start(v)
 
     def try_start(self, s: str) -> None:
+        if len(self.done_times) >= self.n:                         # 已經完成 N 組：不再開新的工作
+            return
         while self.busy[s] + len(self.blocked[s]) < self.k[s]:      # 還有空的人手
             if not self.preds[s]:                                  # 起點站：原料無限，最多投入 N 件
                 if self.released[s] >= self.n:
@@ -275,6 +354,9 @@ class LineSim:
                 self._acc()
                 for p in self.preds[s]:
                     self.buf[(p, s)] -= 1
+                    self.wait_sum[s] += self.t - self.arr[(p, s)].popleft()   # 這件在站前等了多久
+                    self.wait_n[s] += 1
+                self._note(s)
             d = self.sample(s)
             self.proc_time[s] += d
             self.busy[s] += 1
@@ -320,12 +402,18 @@ class LineSim:
             util = self.proc_time[s] / cap_time
             blk = self.block_time[s] / cap_time
             stats[s] = {"util": util, "blocked": blk, "starved": max(0.0, 1 - util - blk)}
+            if self.preds[s]:                                       # 站前在製品：時間加權平均、最多、結束時、平均等待
+                stats[s].update({
+                    "wip_avg": sum(self.buf_area[(p, s)] for p in self.preds[s]) / end if end > 0 else 0.0,
+                    "wip_max": self.st_max[s], "wip_end": self.st_wip(s),
+                    "wait_avg": self.wait_sum[s] / self.wait_n[s] if self.wait_n[s] else None})
         return {
             "finished": len(self.done_times), "makespan": end,
             "first_out": self.done_times[0] if self.done_times else None,
             "stations": stats,
             "buffers": {f"{a}→{b}": {"avg": (self.buf_area[(a, b)] / end) if end > 0 else 0,
                                      "max": self.buf_max[(a, b)]} for a, b in self.buf},
+            "timeline": ({v: pts + [(end, pts[-1][1])] for v, pts in self.timeline.items()} if self.record else None),
         }
 
 
@@ -344,23 +432,55 @@ def _summ(vals: list[float], nd: int = 1) -> dict:
             "p95": round(_q(vals, 0.95), nd), "min": round(min(vals), nd), "max": round(max(vals), nd)}
 
 
+def _merge_same_time(pts: list[tuple[float, int]]) -> list[list]:
+    """同一時刻有好幾個變化（例如一件送到、馬上被拿走）只留最後的件數，圖上才不會出現瞬間的尖刺"""
+    merged: list[list] = []
+    for t, w in pts:                                    # 1. 同一時刻只留最後的件數
+        t = round(t, 1)
+        if merged and merged[-1][0] == t:
+            merged[-1][1] = w
+        else:
+            merged.append([t, w])
+    out = merged[:1]
+    for t, w in merged[1:-1]:                           # 2. 件數沒有變的點不用畫
+        if w != out[-1][1]:
+            out.append([t, w])
+    if len(merged) > 1:
+        out.append(merged[-1])                          # 3. 保留結束時刻
+    return out
+
+
 def simulate(model: dict, n_sets: int = 10, reps: int = 200, seed: int = 2026, mode: str = "cont",
-             factor: dict | None = None, servers: dict | None = None, wip: str | int = "db") -> dict:
-    """跑 reps 次模擬。wip："db" = 資料庫設定（沒有用 2）；整數 = 全部緩衝區同一個上限；"none" = 不限制。"""
+             factor: dict | None = None, servers: dict | None = None, wip: str | int | dict = "db",
+             init: dict | None = None) -> dict:
+    """跑 reps 次模擬。
+    wip（站前上限）："db" = 資料庫設定（沒有用 2）；整數 = 每一站同一個上限；"none" = 不限制；
+                     {工站: 上限} = 每一站分別設定（None 或 0 = 不限制）
+    init（開始時站前在製品）：{工站: 件數}；沒給 = 資料庫設定（老師網頁的站前半成品初始備料）"""
     if not model.get("ok"):
         return model
     mode = {"sample": "disc"}.get(mode, mode) if mode in ("cont", "disc", "mean", "sample") else "cont"
     n_sets, reps = max(1, int(n_sets)), max(1, min(int(reps), 2000))
     factor = {k: float(v) for k, v in (factor or {}).items()}
     servers = {k: int(v) for k, v in (servers or {}).items()}
-    if wip == "none":
+    if isinstance(wip, dict):
+        cap = dict(model["wip_limits"])
+        for s, v in wip.items():
+            if s in cap:
+                cap[s] = int(v) if v not in (None, "", "none") and int(v) > 0 else None
+    elif wip == "none":
         cap = {s: None for s in model["wip_limits"]}
     elif wip == "db":
         cap = dict(model["wip_limits"])
     else:
         cap = {s: max(1, int(wip)) for s in model["wip_limits"]}
+    init_wip = dict(model.get("init_wip", {}))
+    for s, v in (init or {}).items():
+        if s in init_wip:
+            init_wip[s] = max(0, int(v or 0))
 
-    runs = [LineSim(model, n_sets, random.Random(seed + i), factor, servers, cap, mode).run() for i in range(reps)]
+    runs = [LineSim(model, n_sets, random.Random(seed + i), factor, servers, cap, mode, init_wip, record=(i == 0)).run()
+            for i in range(reps)]
     ok = [r for r in runs if r["finished"] >= n_sets]
     if not ok:
         return {"ok": False, "error": "模擬無法完成（流程可能有斷點），請檢查流程設定"}
@@ -383,11 +503,19 @@ def simulate(model: dict, n_sets: int = 10, reps: int = 200, seed: int = 2026, m
         u = [r["stations"][s]["util"] * 100 for r in ok]
         b = [r["stations"][s]["blocked"] * 100 for r in ok]
         w = [r["stations"][s]["starved"] * 100 for r in ok]
-        stations.append({"station": s, "util_pct": round(sum(u) / len(u), 1), "blocked_pct": round(sum(b) / len(b), 1),
-                         "starved_pct": round(sum(w) / len(w), 1),
-                         "bottleneck_share_pct": round(bott_count.get(s, 0) / len(ok) * 100, 1),
-                         "factor": factor.get(s, 1.0), "servers": max(1, servers.get(s, 1)),
-                         "eff_time": round(eff[s], 1)})
+        row = {"station": s, "util_pct": round(sum(u) / len(u), 1), "blocked_pct": round(sum(b) / len(b), 1),
+               "starved_pct": round(sum(w) / len(w), 1),
+               "bottleneck_share_pct": round(bott_count.get(s, 0) / len(ok) * 100, 1),
+               "factor": factor.get(s, 1.0), "servers": max(1, servers.get(s, 1)),
+               "eff_time": round(eff[s], 1)}
+        if "wip_avg" in ok[0]["stations"][s]:                       # 站前在製品（起點站沒有）
+            waits = [r["stations"][s]["wait_avg"] for r in ok if r["stations"][s]["wait_avg"] is not None]
+            row.update({"init_wip": init_wip.get(s, 0), "wip_limit": cap.get(s),
+                        "wip_avg": round(sum(r["stations"][s]["wip_avg"] for r in ok) / len(ok), 2),
+                        "wip_max": max(r["stations"][s]["wip_max"] for r in ok),
+                        "wip_end": round(sum(r["stations"][s]["wip_end"] for r in ok) / len(ok), 1),
+                        "wait_avg": round(sum(waits) / len(waits), 1) if waits else None})
+        stations.append(row)
     buffers = []
     for name in ok[0]["buffers"]:
         a = [r["buffers"][name]["avg"] for r in ok]
@@ -397,7 +525,7 @@ def simulate(model: dict, n_sets: int = 10, reps: int = 200, seed: int = 2026, m
     return {
         "ok": True, "group_id": model["group_id"], "round": model["round"], "round_label": model["round_label"],
         "params": {"n_sets": n_sets, "reps": reps, "seed": seed, "mode": mode, "wip": wip,
-                   "factor": factor, "servers": servers},
+                   "factor": factor, "servers": servers, "init": init_wip},
         "completed_reps": len(ok),
         "makespan_sec": _summ(mk), "line_ct_sec": _summ(ct), "first_out_sec": _summ(first),
         "steady_sec": _summ(steady) if steady else None,
@@ -405,6 +533,13 @@ def simulate(model: dict, n_sets: int = 10, reps: int = 200, seed: int = 2026, m
         "bottleneck": bottleneck, "bottleneck_share_pct": round(bott_count[bottleneck] / len(ok) * 100, 1),
         "bound_station": bound_st, "bound_ct_sec": round(eff[bound_st], 1),
         "stations": stations, "buffers": buffers,
+        # 每一次模擬的結果（第幾次、亂數種子、完成時間、產線 Cycle Time、瓶頸）：畫「每一次模擬的結果」線圖、存紀錄用
+        "reps_detail": [{"i": i + 1, "seed": seed + i, "makespan": round(r["makespan"], 1),
+                         "ct": round(r["makespan"] / n_sets, 2),
+                         "bottleneck": max(nodes, key=lambda s, r=r: r["stations"][s]["util"])}
+                        for i, r in enumerate(runs) if r["finished"] >= n_sets],
+        # 第 1 次模擬：各站前在製品隨時間的變化 [[時間, 件數], …]（畫階梯圖用）
+        "wip_timeline": {v: _merge_same_time(pts) for v, pts in (runs[0]["timeline"] or {}).items()},
         "actual": model["actual"], "flow_source": model["flow_source"],
         "data_source": model["source_label"], "min_samples": model["min_samples"],
         "samples": {st["station"]: st["pool"]["n"] for st in model["stations"]},

@@ -29,8 +29,8 @@
   const fetchEvents = () => getAll(`event?select=${EVENT_COLUMNS}&order=finish_time.asc.nullslast,id.asc`);
   const fetchFlows = () => getOptional("station_flow?select=group_id,station_id,next_station_id&order=id.asc");
   const fetchModes = () => getOptional("station_wip?select=group_id,station_id,input_wip,updated_at&station_id=in.(GROUP_MODE,SYSTEM_MODE)");
-  // 離散事件模擬用：各站緩衝區上限（station_wip 裡的 ST05_LIMIT 這種列）
-  const fetchLimits = () => getOptional("station_wip?select=group_id,station_id,input_wip&station_id=like.*LIMIT");
+  // 模擬用：各站「站前上限」（ST05_LIMIT 列）與「開始時站前在製品」（ST05 列 = 老師網頁的站前半成品初始備料）
+  const fetchLimits = () => getOptional("station_wip?select=group_id,station_id,input_wip&station_id=like.ST*&order=id.asc");
 
   // ---------- 2. Python（Pyodide） ----------
   let pyReady = null;

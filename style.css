@@ -82,3 +82,20 @@ tr.des-bn td{background:var(--hl)}
 .des-cdf{color:var(--accent);vertical-align:middle}
 .des-lv{font-size:12px;white-space:nowrap}
 .des-lv-few{color:var(--bad)}.des-lv-low{color:#b7791f}.des-lv-ok{color:var(--ok)}.des-lv-best{color:var(--ok);font-weight:700}
+.des-wipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.des-wipfig{margin:0;border:1px solid var(--line);border-radius:8px;padding:6px 8px;color:var(--accent)}
+.des-wipfig.bn{background:color-mix(in srgb,var(--hl) 45%,transparent)}
+.des-wipfig figcaption{display:flex;justify-content:space-between;font-size:12.5px;color:var(--fg);font-weight:600}
+.des-wipfig figcaption span{color:var(--muted);font-weight:400}
+.des-wipfig .ax{stroke:var(--line)}.des-wipfig .lb{font-size:9px;fill:var(--muted)}
+#desStations input[data-c]::placeholder{color:var(--muted)}
+.des-chart svg{display:block;max-width:760px}
+.des-chart .grid{stroke:var(--line)}.des-chart .lb{font-size:10.5px;fill:var(--muted)}.des-chart .lb2{font-size:11px;fill:var(--fg)}
+.des-chart .dot{fill:var(--muted);opacity:.45}.des-chart .raw{fill:none;stroke:var(--muted);stroke-width:.8;opacity:.6}
+.des-chart .cum{fill:none;stroke:var(--accent);stroke-width:2.2}.des-chart .fin{stroke:var(--accent);stroke-dasharray:4 3;opacity:.7}
+.des-chart .band{fill:var(--accent);opacity:.12}.des-chart .rng{stroke:var(--accent);stroke-width:3;opacity:.45;stroke-linecap:round}.des-chart .mean{fill:var(--accent)}
+.des-legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);margin-top:4px}
+.des-legend i{display:inline-block;width:14px;height:8px;margin-right:5px;vertical-align:middle;border-radius:2px}
+.des-legend i.dot{background:var(--muted);opacity:.5;width:8px;border-radius:50%}.des-legend i.cum{background:var(--accent);height:3px}.des-legend i.band{background:var(--accent);opacity:.18}
+#desHistTable td,#desHistTable th{vertical-align:top}#desHistTable td.des-set{white-space:normal;min-width:160px;text-align:left}
+#desHistTable small{color:var(--muted)}

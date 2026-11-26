@@ -126,25 +126,101 @@ check("12 等級 29 筆", level_of(29)["code"], "low")
 check("12 等級 30 筆", level_of(30)["code"], "ok")
 check("12 等級 100 筆", level_of(100)["code"], "best")
 
-# 13. 資料來源：本場 3 筆（10 秒）、本組第 2 次 5 筆（12 秒）、別組 40 筆（30 秒）
+# 13. 資料來源：只用本組，而且只加「流程相同」的場次
+#     本場（第 1 次）3 筆 10 秒；第 2 次 5 筆 12 秒（沒有自己的流程 → 沿用 G01-T1，流程相同）；
+#     別組 G02 40 筆 30 秒（不管選什麼都不會加入）
 evs = [ev("ST01", i, 10) for i in range(3)] + [ev("ST01", i, 12, rnd="TEST2") for i in range(5)] \
     + [ev("ST01", i % 60, 30, g="G02") for i in range(40)]
 fl = flow("G01-T1", ("ST01", ""))
-n_of = lambda src: build_model(evs, fl, [], "G01", "TEST1", source=src)["stations"][0]["pool"]["n"]
-check("13 只用本場 = 3 筆", n_of("round"), 3)
-check("13 本場 + 本組 = 8 筆", n_of("group"), 8)
-check("13 本場 + 全班 = 43 筆", n_of("class"), 43)
-check("13 自動補到 30：本場 3 + 本組 5 不夠 → 再加全班 = 48 筆", n_of("auto30"), 48)
-m = build_model(evs, fl, [], "G01", "TEST1", source="class")
-check("13 加入資料平均差 200% → 提醒", m["stations"][0]["diff_warn"], True)
+n_of = lambda e, f, src, rnd="TEST1": build_model(e, f, [], "G01", rnd, source=src)["stations"][0]["pool"]["n"]
+check("13 只用本場 = 3 筆", n_of(evs, fl, "round"), 3)
+check("13 本場 + 本組流程相同 = 3 + 5 = 8 筆（別組不加）", n_of(evs, fl, "group"), 8)
+check("13 自動補到 30：只加本組，別組不加 = 8 筆", n_of(evs, fl, "auto30"), 8)
+check("13 舊選項「全班」改成只用本組", n_of(evs, fl, "class"), 8)
 m = build_model(evs, fl, [], "G01", "TEST1", source="group")
-check("13 加入本組資料平均差 20% → 不提醒", m["stations"][0]["diff_warn"], False)
-#     本場 3 筆 + 本組 30 筆 → 自動補到 30 只加本組，不加全班
-evs2 = [ev("ST01", i, 10) for i in range(3)] + [ev("ST01", i % 60, 12, rnd="TEST2") for i in range(30)] \
-     + [ev("ST01", i, 30, g="G02") for i in range(40)]
-check("13 自動補到 30：本組夠了就不加全班", build_model(evs2, fl, [], "G01", "TEST1", source="auto30")["stations"][0]["pool"]["n"], 33)
-#     實際結果只用本場（加入的資料只影響加工時間的分布）
+check("13 第 2 次測試標示為流程相同", m["other_rounds"][0]["same_flow"], True)
 check("13 實際結果只算本場", m["actual"]["events"], 3)
+
+# 14. 流程不同的場次不加入：第 2 次測試的流程是 ST02 → ST01（跟第 1 次的 ST01 → ST02 相反）
+evs = [ev(st, i, 10) for st in ("ST01", "ST02") for i in range(3)] + \
+      [ev(st, i, 99, rnd="TEST2") for st in ("ST01", "ST02") for i in range(5)]
+fl = flow("G01-T1", ("ST01", "ST02")) + flow("G01-T2", ("ST02", "ST01"))
+m = build_model(evs, fl, [], "G01", "TEST1", source="group")
+check("14 流程不同 → 不加入（ST01 還是 3 筆）", m["stations"][0]["pool"]["n"], 3)
+check("14 標示流程不同", m["other_rounds"][0]["same_flow"], False)
+check("14 原因寫出對方的流程", "流程不同" in m["other_rounds"][0]["reason"], True)
+fl2 = flow("G01-T1", ("ST01", "ST02")) + flow("G01-T2", ("ST01", "ST02"))
+check("14 兩場各自設定、但連線一樣 → 視為相同、加入（3 + 5）", n_of(evs, fl2, "group"), 8)
+fl3 = flow("G01-T1", ("ST01", "ST02"), ("ST02", "")) + flow("G01-T2", ("ST01", "ST02"))
+check("14 終點站有沒有單獨寫一列不影響 → 視為相同", n_of(evs, fl3, "group"), 8)
+
+# 15. 沒有設定流程：無法確認相同 → 不加入
+evs = [ev("ST01", i, 10) for i in range(3)] + [ev("ST01", i, 12, rnd="TEST2") for i in range(5)]
+m = build_model(evs, [], [], "G01", "TEST1", source="group")
+check("15 沒有流程 → 不加入", m["stations"][0]["pool"]["n"], 3)
+check("15 原因：無法確認", "無法確認" in m["other_rounds"][0]["reason"], True)
+
+# 16. 自動補到 30：場次近的先加，夠 30 筆就停
+#     本場 = 第 3 次 10 筆；第 2 次 25 筆；第 1 次 25 筆；三場流程都沿用 G01-T1（相同）
+#     → 10 + 第 2 次 25 = 35 ≥ 30，就不再加第 1 次 → 35 筆
+evs = [ev("ST01", i, 10, rnd="TEST3") for i in range(10)] + [ev("ST01", i, 12, rnd="TEST2") for i in range(25)] \
+    + [ev("ST01", i, 14, rnd="TEST1") for i in range(25)]
+fl = flow("G01-T1", ("ST01", ""))
+m = build_model(evs, fl, [], "G01", "TEST3", source="auto30")
+check("16 自動補到 30：只加最近的第 2 次 = 35 筆", m["stations"][0]["pool"]["n"], 35)
+check("16 用到的場次", m["stations"][0]["used"], ["本場", "第 2 次測試"])
+check("16 本場 + 本組全部（group）= 60 筆", n_of(evs, fl, "group", "TEST3"), 60)
+
+# 17. 站前在製品（開始時件數）：ST01（10 秒）→ ST02（20 秒），ST02 前先放 1 件，做 3 組，不限上限
+#     ST02 一開始就做那 1 件（0→20）；ST01 的第 1 件 10 秒到、等到 20 秒（等 10 秒）→ 40；
+#     第 2 件 20 秒到、等到 40 秒（等 20 秒）→ 60 → 完成 3 組 60 秒（沒放的話是 10 + 20×3 = 70 秒）
+#     第 3 件 30 秒到，那時第 2 件還在等 → ST02 前最多 2 件；完成 3 組就停，第 3 件留在 ST02 前面 → 結束時 1 件
+#     ST02 前平均等待 =（0 + 10 + 20）÷ 3 = 10 秒
+m = model({"ST01": 10, "ST02": 20}, [("ST01", "ST02")])
+r = run(m, 3, wip="none", init={"ST02": 1})
+st2 = r["stations"][1]
+check("17 開始時站前 1 件 → 完成時間 60", r["makespan_sec"]["mean"], 60)
+check("17 沒放 → 70", run(m, 3, wip="none")["makespan_sec"]["mean"], 70)
+check("17 ST02 前平均等待 10 秒", st2["wait_avg"], 10)
+check("17 結束時 ST02 前還有 1 件", st2["wip_end"], 1)
+check("17 ST02 前最多 2 件", st2["wip_max"], 2)
+check("17 時間軸：0 秒那 1 件馬上被拿走 → 從 0 件開始", r["wip_timeline"]["ST02"][0], [0.0, 0])
+check("17 時間軸：10 秒 1 件、30 秒 2 件、40 秒 1 件、到 60 秒", r["wip_timeline"]["ST02"], [[0.0, 0], [10.0, 1], [30.0, 2], [40.0, 1], [60.0, 1]])
+#     ST02 前在製品時間加權平均：0~10 秒 0 件（初始那件 0 秒就被拿走）、10~30 秒 1 件、30~40 秒 2 件、40~60 秒 1 件
+#     =（0×10 + 1×20 + 2×10 + 1×20）÷ 60 = 60 ÷ 60 = 1.0
+check("17 ST02 前平均在製品 = 60 ÷ 60 = 1.0", st2["wip_avg"], 1.0)
+
+# 18. 每一站分別設定上限：ST01(10) → ST02(30) → ST03(10)，ST02 前上限 1、ST03 前不限
+m = model({"ST01": 10, "ST02": 30, "ST03": 10}, [("ST01", "ST02"), ("ST02", "ST03")])
+r = run(m, 3, wip={"ST02": 1, "ST03": None})
+check("18 ST02 前上限 1", r["stations"][1]["wip_limit"], 1)
+check("18 ST03 前不限", r["stations"][2]["wip_limit"], None)
+check("18 ST02 前最多 1 件", r["stations"][1]["wip_max"], 1)
+check("18 ST01 被擋住（有阻塞）", r["stations"][0]["blocked_pct"] > 0, True)
+check("18 完成時間 110 秒（同第 7 項）", r["makespan_sec"]["mean"], 110)
+
+# 19. 從資料庫讀「開始時站前在製品」：station_wip 的 G01-T1 / ST02 列 input_wip = 2（老師網頁的站前半成品初始備料）
+m = model({"ST01": 10, "ST02": 20}, [("ST01", "ST02")],
+          limits=[{"group_id": "G01-T1", "station_id": "ST02", "input_wip": 2},
+                  {"group_id": "G01-T1", "station_id": "ST02_LIMIT", "input_wip": 3}])
+check("19 讀到 ST02 開始時 2 件", m["init_wip"]["ST02"], 2)
+check("19 起點站 ST01 沒有站前在製品", "ST01" in m["init_wip"], False)
+r = run(m, 3, wip="none")
+check("19 沒指定 init 時用資料庫的 2 件", r["stations"][1]["init_wip"], 2)
+check("19 ST02 前最多 2 件", r["stations"][1]["wip_max"] >= 2, True)
+#     合流站：每個前站各放 k 件（= k 套）
+m = model({"ST01": 10, "ST02": 30, "ST03": 5}, [("ST01", "ST03"), ("ST02", "ST03")])
+r = run(m, 4, wip="none", init={"ST03": 1})
+check("19 合流站開始時 1 套 = 2 件", r["stations"][2]["wip_max"] >= 2, True)
+
+# 20. 每一次模擬的結果都保留：筆數 = 模擬次數；平均 = 整體平均；第 i 次用亂數種子 seed + i − 1
+m = build_model([ev("ST01", i, d) for i, d in enumerate([5, 10, 15, 20])], flow("G01-T1", ("ST01", "")), [], "G01", "TEST1")
+r = simulate(m, n_sets=10, reps=37, seed=100)
+det = r["reps_detail"]
+check("20 保留 37 次的結果", len(det), 37)
+check("20 第 1 次用種子 100、第 37 次用 136", (det[0]["seed"], det[-1]["seed"]), (100, 136))
+check("20 每次的完成時間平均 = 整體平均", abs(sum(d["makespan"] for d in det) / 37 - r["makespan_sec"]["mean"]) < 0.06, True)
+check("20 每次 CT = 完成時間 ÷ 10", all(abs(d["ct"] - d["makespan"] / 10) < 0.01 for d in det), True)
 
 fails = [x for x in results if not x[1]]
 for name, ok, msg in results:
