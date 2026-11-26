@@ -60,7 +60,7 @@ def run_compute(tick, events_json, flows_json, modes_json):
     message, data = compute(int(tick), json.loads(events_json), json.loads(flows_json), json.loads(modes_json))
     return json.dumps({"message": message, "data": data}, ensure_ascii=False, default=str)
 
-from des import build_model, simulate
+from des import build_model, simulate, variability_experiment
 def des_model(group, rnd, source, data_json):
     d = json.loads(data_json)
     m = build_model(d["events"], d["flows"], d["limits"], group, rnd, source)
@@ -70,15 +70,21 @@ def des_run(group, rnd, source, data_json, params_json):
     d, p = json.loads(data_json), json.loads(params_json)
     m = build_model(d["events"], d["flows"], d["limits"], group, rnd, source)
     return json.dumps(simulate(m, **p), ensure_ascii=False, default=str)
+def des_experiment(group, rnd, source, data_json, params_json):
+    d, p = json.loads(data_json), json.loads(params_json)
+    m = build_model(d["events"], d["flows"], d["limits"], group, rnd, source)
+    return json.dumps(variability_experiment(m, **p), ensure_ascii=False, default=str)
 `);
       const fn = py.globals.get("run_compute");
       const fModel = py.globals.get("des_model");
       const fRun = py.globals.get("des_run");
+      const fExp = py.globals.get("des_experiment");
       return {
         version: py.version,
         compute: (tick, ev, fl, md) => JSON.parse(fn(tick, JSON.stringify(ev), JSON.stringify(fl), JSON.stringify(md))),
         desModel: (g, r, src, data) => JSON.parse(fModel(g, r, src, JSON.stringify(data))),
         desRun: (g, r, src, data, params) => JSON.parse(fRun(g, r, src, JSON.stringify(data), JSON.stringify(params))),
+        desExp: (g, r, src, data, params) => JSON.parse(fExp(g, r, src, JSON.stringify(data), JSON.stringify(params))),
       };
     })();
     pyReady.catch(() => { pyReady = null; });
@@ -152,6 +158,7 @@ def des_run(group, rnd, source, data_json, params_json):
     // 離散事件模擬：model = 看模型（工站、流程、作業時間、緩衝區上限），simulate = 跑模擬
     async desModel(group, round, source = "round") { const py = await loadPython(); return py.desModel(group, round, source, await desData()); },
     async simulate(group, round, source, params) { const py = await loadPython(); return py.desRun(group, round, source, await desData(), params); },
+    async experiment(group, round, source, params) { const py = await loadPython(); return py.desExp(group, round, source, await desData(), params); },
     async desRefresh() { await desData(); return dataVersion; },   // 讀最新資料，回傳資料版本
     pythonInfo: () => (pyReady ? "載入中或已載入" : "尚未載入"),
     loadPython,

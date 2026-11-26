@@ -357,6 +357,108 @@
     } finally { $("desRun").disabled = false; }
   }
 
+  // ================= 變異與緩衝實驗（變異越大 → 需要越多緩衝 → 才能維持相同名義產出速率）
+  const expCard = $("expCard");
+  let expBusy = false, lastExp = null;
+  if (expCard) expCard.hidden = false;
+  const vColor = (i) => `var(--v${Math.min(i, 4)})`;
+  const multLabel = (row) => `×${row.mult}（CV ${row.cv_avg}）`;
+  const needText = (n) => (n == null ? "超過 10 件" : `${n} 件`);
+
+  function expChart(x) {
+    const bufs = x.buffers, rows = x.rows, tgt = x.target_pct;
+    const all = rows.flatMap((r) => r.cells.map((c) => c.pct));
+    const step = Math.min(...all, tgt) < 60 ? 10 : 5;                       // 刻度：5% 或 10% 一格
+    const lo = Math.max(0, Math.floor((Math.min(...all, tgt) - 1) / step) * step), hi = Math.max(101, Math.ceil(Math.max(...all)));
+    const W = 640, H = 270, L = 48, R = 16, T = 12, B = 44;
+    const x0 = (i) => L + (i + 0.5) / bufs.length * (W - L - R);
+    const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+    const ticks = []; for (let v = lo; v <= 100; v += step) ticks.push(v);
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="不同變異程度下，緩衝大小與產出達成率的關係">
+      ${ticks.map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="grid"/><text x="${L - 6}" y="${(y(v) + 4).toFixed(1)}" class="lb" text-anchor="end">${v.toFixed(0)}%</text>`).join("")}
+      ${bufs.map((b, i) => `<text x="${x0(i).toFixed(1)}" y="${H - 26}" class="lb" text-anchor="middle">${b}</text>`).join("")}
+      <text x="${(L + W - R) / 2}" y="${H - 8}" class="lb" text-anchor="middle">緩衝（每站前最多放幾件，開始時放滿）</text>
+      <text x="12" y="${(T + H - B) / 2}" class="lb" text-anchor="middle" transform="rotate(-90 12 ${(T + H - B) / 2})">產出達成率（實際 ÷ 名義）</text>
+      <line x1="${L}" x2="${W - R}" y1="${y(tgt).toFixed(1)}" y2="${y(tgt).toFixed(1)}" class="tgt"/>
+      <text x="${W - R}" y="${(y(tgt) - 5).toFixed(1)}" class="lb" text-anchor="end">目標 ${tgt}%</text>
+      ${rows.map((r, ri) => `<polyline points="${r.cells.map((c, i) => `${x0(i).toFixed(1)},${y(c.pct).toFixed(1)}`).join(" ")}" fill="none" stroke="${vColor(ri)}" stroke-width="2"/>
+        ${r.cells.map((c, i) => `<circle cx="${x0(i).toFixed(1)}" cy="${y(c.pct).toFixed(1)}" r="4.5" fill="${vColor(ri)}" stroke="var(--card)" stroke-width="2"><title>變異 ${multLabel(r)}，緩衝 ${c.buffer} 件：達成 ${c.pct}%（${c.th} 組/時），站前在製品合計 ${c.wip} 件</title></circle>`).join("")}`).join("")}
+    </svg>
+    <div class="des-legend">${rows.map((r, ri) => `<span><i style="background:${vColor(ri)};height:3px"></i>變異 ${multLabel(r)}${r.mult === 1 ? "＝實際資料" : ""}</span>`).join("")}</div>`;
+  }
+
+  function needChart(x) {
+    const rows = x.rows, maxB = Math.max(...x.buffers);
+    const W = 640, H = 220, L = 48, R = 16, T = 18, B = 46;
+    const top = maxB + 1, bw = Math.min(70, (W - L - R) / rows.length * 0.55);
+    const xc = (i) => L + (i + 0.5) / rows.length * (W - L - R);
+    const y = (v) => T + (1 - v / top) * (H - T - B);
+    const ticks = [0, maxB / 2, maxB];
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="各變異程度達到目標需要的緩衝件數">
+      ${ticks.map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" class="grid"/><text x="${L - 6}" y="${(y(v) + 4).toFixed(1)}" class="lb" text-anchor="end">${v}</text>`).join("")}
+      <text x="12" y="${(T + H - B) / 2}" class="lb" text-anchor="middle" transform="rotate(-90 12 ${(T + H - B) / 2})">需要的緩衝（件）</text>
+      ${rows.map((r, i) => {
+        const v = r.need == null ? top : r.need, h = y(0) - y(v), cx = xc(i);
+        return `<path d="M${(cx - bw / 2).toFixed(1)} ${y(0).toFixed(1)} V${(y(v) + 4).toFixed(1)} q0 -4 4 -4 H${(cx + bw / 2 - 4).toFixed(1)} q4 0 4 4 V${y(0).toFixed(1)} Z" class="bar"${r.need == null ? ' opacity=".35"' : ""}><title>變異 ${multLabel(r)}：需要 ${needText(r.need)}</title></path>
+          <text x="${cx.toFixed(1)}" y="${(y(v) - 6).toFixed(1)}" class="lb2" text-anchor="middle">${needText(r.need)}</text>
+          <text x="${cx.toFixed(1)}" y="${H - 28}" class="lb" text-anchor="middle">×${r.mult}</text>
+          <text x="${cx.toFixed(1)}" y="${H - 14}" class="lb" text-anchor="middle">CV ${r.cv_avg}</text>`;
+      }).join("")}
+    </svg>`;
+  }
+
+  function renderExp(x) {
+    lastExp = x;
+    const rows = x.rows, first = rows[0], last = rows[rows.length - 1];
+    const needs = rows.map((r) => (r.need == null ? 99 : r.need));
+    let concl;
+    if (needs[needs.length - 1] > needs[0]) {
+      concl = `變異從 ${multLabel(first)} 增加到 ${multLabel(last)}，要維持名義產出的 ${x.target_pct}%，需要的緩衝從 <b>${needText(first.need)}</b> 增加到 <b>${needText(last.need)}</b>：變異越大，需要越多緩衝。`;
+    } else {
+      concl = `在這些設定下，各種變異需要的緩衝都是 ${needText(first.need)}，看不出差別。`;
+      if (!x.balanced) concl += "實際產線的瓶頸很明顯時，瓶頸前面永遠有料，緩衝的影響很小；可以改成「平衡產線」再跑一次。";
+    }
+    $("expConcl").innerHTML = concl;
+    $("expStations").innerHTML = `<thead><tr><th>工站</th><th>平均（秒）</th><th>標準差 σ（秒）</th><th>變異係數 CV = σ ÷ 平均</th>${x.balanced ? "<th>平衡後的平均（秒）</th>" : ""}</tr></thead><tbody>` +
+      x.stations.map((s) => `<tr${s.station === x.nominal_station ? ' class="des-bn"' : ""}><td>${esc(s.station)}${s.station === x.nominal_station ? ' <span class="tag">最慢</span>' : ""}</td><td>${s.mean}</td><td>${s.sd}</td><td>${s.cv}</td>${x.balanced ? `<td>${s.balanced_mean}</td>` : ""}</tr>`).join("") + "</tbody>";
+    $("expChart").innerHTML = expChart(x);
+    $("expNeedChart").innerHTML = needChart(x);
+    $("expTable").innerHTML = `<thead><tr><th>變異</th>${x.buffers.map((b) => `<th>緩衝 ${b}</th>`).join("")}<th>達到 ${x.target_pct}% 需要</th></tr></thead><tbody>` +
+      rows.map((r) => `<tr><td>${multLabel(r)}${r.mult === 1 ? "<br><small>實際資料</small>" : ""}</td>${r.cells.map((c) => `<td${c.buffer === r.need ? ' class="ok des-bn"' : ""}>${c.pct}%<br><small>${c.wip} 件</small></td>`).join("")}<td><b>${needText(r.need)}</b></td></tr>`).join("") + "</tbody>";
+    $("expNote").textContent = [`名義產出速率 ${x.nominal} 組/小時（最慢站 ${x.nominal_station} 平均 ${x.nominal_ct} 秒/組${x.balanced ? "，平衡產線把各站平均都調成這個值" : ""}）`,
+      `每一格跑 ${x.reps} 次、每次做 ${x.n_sets} 組，只算中間 80% 的產出；每一格用同一組亂數，差別只來自變異和緩衝`,
+      `加工時間：${x.mode === "disc" ? "離散型" : "連續型"}經驗分布｜資料來源：${x.data_source}，最少的工站 ${x.min_samples} 筆`,
+      `流程：${x.flow_source}`].join("｜");
+    $("expResult").hidden = false;
+  }
+
+  $("expRun").onclick = async () => {
+    if (!model || expBusy) return;
+    const t = target(), p = params();
+    expBusy = true; $("expRun").disabled = true;
+    const reps = Math.max(5, Math.min(200, Math.round(Number($("expReps").value) || 30)));
+    const n = Math.max(20, Math.min(500, Math.round(Number($("expN").value) || 100)));
+    $("expMsg").textContent = `實驗中…共 5 種變異 × 5 種緩衝 = 25 格，每格 ${reps} 次（約 5～20 秒，畫面會暫停一下）`;
+    await new Promise((ok) => setTimeout(ok, 60));      // 先讓提示文字顯示出來
+    const t0 = performance.now();
+    try {
+      const x = await BrowserEngine.experiment(t.g, t.r, t.src, { n_sets: n, reps, seed: p.seed, mode: p.mode === "disc" ? "disc" : "cont",
+        balanced: $("expBalanced").value === "1", target_pct: Number($("expTarget").value), factor: p.factor, servers: p.servers });
+      if (!x.ok) { $("expMsg").textContent = x.error; return; }
+      renderExp(x);
+      $("expMsg").textContent = `完成：25 格 × ${reps} 次，用了 ${((performance.now() - t0) / 1000).toFixed(1)} 秒`;
+    } catch (e) {
+      $("expMsg").textContent = `實驗失敗：${e.message}`;
+    } finally { expBusy = false; $("expRun").disabled = !model; }
+  };
+  $("expCsv").onclick = () => {
+    if (!lastExp) return;
+    const x = lastExp, t = target();
+    csvDownload("變異與緩衝實驗.csv", [["組別場次", "產線", "變異倍率", "平均CV", "最大CV", "緩衝(件)", "產出(組/時)", "名義產出(組/時)", "達成率(%)", "站前在製品合計(件)", `達到${x.target_pct}%需要的緩衝`],
+      ...x.rows.flatMap((r) => r.cells.map((c) => [`${t.g} ${roundLabel(t.r)}`, x.balanced ? "平衡" : "實際", r.mult, r.cv_avg, r.cv_max, c.buffer, c.th, x.nominal, c.pct, c.wip, r.need ?? "超過10"]))]);
+  };
+  setInterval(() => { if (!expBusy) $("expRun").disabled = !model; }, 800);
+
   $("desRun").onclick = run;
   $("desSource").onchange = () => loadModel(true);
   $("desMode").onchange = () => { if (model) renderParams(keepInputs()); };

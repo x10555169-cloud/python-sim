@@ -410,6 +410,7 @@ class LineSim:
         return {
             "finished": len(self.done_times), "makespan": end,
             "first_out": self.done_times[0] if self.done_times else None,
+            "done_times": self.done_times,
             "stations": stats,
             "buffers": {f"{a}→{b}": {"avg": (self.buf_area[(a, b)] / end) if end > 0 else 0,
                                      "max": self.buf_max[(a, b)]} for a, b in self.buf},
@@ -544,3 +545,101 @@ def simulate(model: dict, n_sets: int = 10, reps: int = 200, seed: int = 2026, m
         "data_source": model["source_label"], "min_samples": model["min_samples"],
         "samples": {st["station"]: st["pool"]["n"] for st in model["stations"]},
     }
+
+
+# ---------------------------------------------------------------- 5. 變異與緩衝實驗
+# 老師要示範的定律：變異越大 → 需要越多緩衝（站前在製品）→ 才能維持相同的名義產出速率
+#   變異   每站加工時間的標準差 σ；用變異係數 CV = σ ÷ 平均 比較不同工站
+#   緩衝   每站前面最多能放幾件（站前上限）
+#   名義產出速率 = 3600 ÷ 最慢站的平均時間（沒有變異時理論上的產出，組/小時）
+#   變異倍率 k：每一筆 = 平均 + k ×（原值 − 平均）→ 平均不變（名義產出不變），標準差變成 k 倍
+#   k = 0 沒有變異；k = 1 實際資料；k = 2 快慢差距變兩倍
+#   緩衝 b：每站前面最多放 b 件，而且一開始就放滿 b 件（緩衝 = 手上真的有的在製品，才能在前站慢的時候頂上）
+#   產出：只算中間 80% 的完成（第 10%～90% 組），避開開頭填滿、結尾把緩衝用完的影響
+EXP_MULTS = [0, 0.5, 1, 2, 3]
+EXP_BUFFERS = [1, 2, 3, 5, 10]
+
+
+def dist_mean(vals: list[float], mode: str) -> float:
+    """模擬實際使用的分布的平均：離散型 = 原始平均；連續型（分段線性）= 每一段中點的平均"""
+    v = sorted(vals)
+    if mode == "disc" or len(v) == 1:
+        return sum(v) / len(v)
+    return sum((v[i] + v[i + 1]) / 2 for i in range(len(v) - 1)) / (len(v) - 1)
+
+
+def dist_sd(vals: list[float], mode: str) -> float:
+    """模擬實際使用的分布的標準差（連續型：每一段是均勻分布，機率各 1/(n−1)）"""
+    v = sorted(vals)
+    mu = dist_mean(v, mode)
+    if len(v) == 1:
+        return 0.0
+    if mode == "disc":
+        ex2 = sum(x * x for x in v) / len(v)
+    else:
+        ex2 = sum((v[i] ** 2 + v[i] * v[i + 1] + v[i + 1] ** 2) / 3 for i in range(len(v) - 1)) / (len(v) - 1)
+    return max(0.0, ex2 - mu * mu) ** 0.5
+
+
+def scale_times(vals: list[float], k: float, mode: str, center: float | None = None) -> list[float]:
+    """變異倍率 k：以平均為中心把每一筆拉開或縮小（k 倍）；center 有給 = 平衡產線，把平均移到 center。
+    太小的值（低於平均的 5%）截掉後，再整體乘一個係數，讓平均剛好不變。"""
+    v = sorted(vals)
+    c = dist_mean(v, mode)
+    target = c if center is None else center
+    w = [max(0.05 * target, target + k * (x - c)) for x in v]
+    m = dist_mean(w, mode)
+    return sorted(x * target / m for x in w) if m > 0 else w
+
+
+def variability_experiment(model: dict, n_sets: int = 100, reps: int = 30, seed: int = 2026, mode: str = "cont",
+                           balanced: bool = True, target_pct: float = 95, factor: dict | None = None,
+                           servers: dict | None = None, mults: list | None = None, buffers: list | None = None) -> dict:
+    """變異倍率 × 緩衝大小，每一格跑 reps 次（每一格用同一組亂數），算穩定期的產出達成率（實際 ÷ 名義）。"""
+    if not model.get("ok"):
+        return model
+    mode = mode if mode in ("cont", "disc") else "cont"       # 固定平均值沒有變異，實驗用連續型
+    n_sets, reps = max(20, int(n_sets)), max(5, min(int(reps), 500))
+    i1, i2 = int(n_sets * 0.1), int(n_sets * 0.9) - 1             # 量產出的區間：第 10%～90% 組
+    factor = {k: float(v) for k, v in (factor or {}).items()}
+    servers = {k: max(1, int(v)) for k, v in (servers or {}).items()}
+    mults = [float(m) for m in (mults or EXP_MULTS)]
+    buffers = buffers or EXP_BUFFERS
+    nodes = [s["station"] for s in model["stations"]]
+    base = {s: [x * factor.get(s, 1.0) for x in model["times"][s]] for s in nodes}   # 先套用作業時間倍率
+    means = {s: dist_mean(base[s], mode) for s in nodes}
+    eff = {s: means[s] / servers.get(s, 1) for s in nodes}                         # 每站「每組」平均要多久
+    slow = max(nodes, key=lambda s: eff[s])
+    center = {s: eff[slow] * servers.get(s, 1) for s in nodes} if balanced else {s: None for s in nodes}
+    nominal = 3600 / eff[slow]                                                      # 名義產出速率（組/小時）
+    stations = [{"station": s, "mean": round(means[s], 1), "sd": round(dist_sd(base[s], mode), 1),
+                 "cv": round(dist_sd(base[s], mode) / means[s], 2) if means[s] else 0,
+                 "balanced_mean": round(center[s], 1) if balanced else None} for s in nodes]
+    rows = []
+    for k in mults:
+        times = {s: scale_times(base[s], k, mode, center[s]) for s in nodes}
+        m2 = {**model, "times": times}
+        cvs = [dist_sd(times[s], mode) / dist_mean(times[s], mode) for s in nodes]
+        cells = []
+        for b in buffers:
+            cap = {s: b for s in model["wip_limits"]}               # 每站前最多 b 件
+            init = {s: b for s in model["wip_limits"]}              # 一開始就放滿 b 件
+            th, wip = [], []
+            for i in range(reps):                                  # 每一格用同一組亂數（seed + i），差別只來自設定
+                r = LineSim(m2, n_sets, random.Random(seed + i), {}, servers, cap, mode, init).run()
+                d = r["done_times"]
+                if r["finished"] < n_sets or d[i2] <= d[i1]:
+                    continue
+                th.append((i2 - i1) / (d[i2] - d[i1]) * 3600)      # 穩定期產出（組/小時）
+                wip.append(sum(st.get("wip_avg", 0) for st in r["stations"].values()))
+            mean_th = sum(th) / len(th) if th else 0
+            cells.append({"buffer": b, "th": round(mean_th, 1), "pct": round(mean_th / nominal * 100, 1),
+                          "wip": round(sum(wip) / len(wip), 2) if wip else 0})
+        need = next((c["buffer"] for c in cells if c["pct"] >= target_pct), None)   # None = 測到的緩衝都還不夠
+        rows.append({"mult": k, "cv_avg": round(sum(cvs) / len(cvs), 2), "cv_max": round(max(cvs), 2),
+                     "cells": cells, "need": need})
+    return {"ok": True, "group_id": model["group_id"], "round": model["round"], "round_label": model["round_label"],
+            "nominal": round(nominal, 1), "nominal_station": slow, "nominal_ct": round(eff[slow], 1),
+            "balanced": balanced, "target_pct": target_pct, "mode": mode, "n_sets": n_sets, "reps": reps, "seed": seed,
+            "buffers": buffers, "stations": stations, "rows": rows,
+            "flow_source": model["flow_source"], "data_source": model["source_label"], "min_samples": model["min_samples"]}

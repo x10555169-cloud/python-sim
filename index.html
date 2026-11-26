@@ -130,6 +130,35 @@
       </div>
     </section>
 
+    <section class="card" id="expCard" hidden>
+      <h2>變異與緩衝實驗 <span class="sub">（變異越大 → 需要越多緩衝 → 才能維持相同的名義產出速率。Python 程式：des.py 的 variability_experiment）</span></h2>
+      <p class="hint">用上方「經驗分布模擬」選的組別、場次、資料來源。每站的<b>平均不變</b>，只把加工時間的快慢差距（標準差）放大或縮小：×0 = 每件一樣快、×1 = 實際資料、×3 = 差距變 3 倍。
+        每一種變異，再試緩衝 1、2、3、5、10 件（每站前面最多放幾件，而且一開始就放滿），看產出能達到名義產出速率的幾 %。</p>
+      <div class="des-params">
+        <label>產線<select id="expBalanced"><option value="1">平衡產線（各站平均調成一樣，只看變異的影響）</option><option value="0">實際產線（各站平均照實際資料）</option></select></label>
+        <label>目標：達到名義產出的<select id="expTarget"><option value="90">90%</option><option value="95" selected>95%</option><option value="98">98%</option></select></label>
+        <label>每格模擬次數<input id="expReps" type="number" min="5" max="200" value="30"></label>
+        <label>每次做幾組<input id="expN" type="number" min="20" max="500" value="100"></label>
+      </div>
+      <div class="row round-actions">
+        <button id="expRun" class="primary" disabled>▶ 跑變異與緩衝實驗</button>
+        <span class="hint" id="expMsg" role="status"></span>
+      </div>
+      <div id="expResult" hidden>
+        <p class="exp-concl" id="expConcl"></p>
+        <h3 class="des-h3">各站的變異 <span class="sub">（實際資料，×1）</span></h3>
+        <div class="table-wrap"><table id="expStations"></table></div>
+        <h3 class="des-h3">緩衝越多，產出越接近名義產出 <span class="sub">（每條線是一種變異程度；虛線 = 目標）</span></h3>
+        <div class="des-chart" id="expChart"></div>
+        <h3 class="des-h3">變異越大，需要的緩衝越多 <span class="sub">（達到目標最少要幾件緩衝）</span></h3>
+        <div class="des-chart" id="expNeedChart"></div>
+        <h3 class="des-h3">完整結果 <span class="sub">（每一格：產出達成率｜站前在製品合計）</span></h3>
+        <div class="table-wrap"><table id="expTable"></table></div>
+        <div class="row round-actions"><button id="expCsv">下載實驗結果（CSV）</button></div>
+        <p class="hint" id="expNote"></p>
+      </div>
+    </section>
+
     <section class="card" id="roundCard">
       <h2>場次紀錄 <span class="sub" id="roundSub"></span></h2>
       <p class="hint" id="roundHint"></p>

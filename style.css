@@ -99,3 +99,11 @@ tr.des-bn td{background:var(--hl)}
 .des-legend i.dot{background:var(--muted);opacity:.5;width:8px;border-radius:50%}.des-legend i.cum{background:var(--accent);height:3px}.des-legend i.band{background:var(--accent);opacity:.18}
 #desHistTable td,#desHistTable th{vertical-align:top}#desHistTable td.des-set{white-space:normal;min-width:160px;text-align:left}
 #desHistTable small{color:var(--muted)}
+/* 變異與緩衝實驗：變異程度 = 單一色相由淺到深（已用 dataviz 驗證器檢查） */
+:root{--v0:#84b9f3;--v1:#519ced;--v2:#257de0;--v3:#1b64be;--v4:#0f4a96}
+@media (prefers-color-scheme:dark){:root{--v0:#1757ac;--v1:#2370cd;--v2:#338ced;--v3:#6aabf1;--v4:#b6d5f8}}
+.exp-concl{font-size:16px;font-weight:600;margin:4px 0 0;line-height:1.6}
+.des-chart .tgt{stroke:var(--fg);stroke-dasharray:5 4;opacity:.55}
+.des-chart .bar{fill:var(--v2)}
+#expTable td{text-align:center}#expTable th{text-align:center}#expTable td:first-child,#expTable th:first-child{text-align:left}
+#expTable td.ok{font-weight:700;background:var(--hl)}#expTable td small{color:var(--muted)}

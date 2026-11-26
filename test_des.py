@@ -4,9 +4,11 @@
 """
 from __future__ import annotations
 
+import random
 import sys
 
-from des import build_model, empirical_continuous, empirical_discrete, level_of, simulate
+from des import (build_model, dist_mean, dist_sd, empirical_continuous, empirical_discrete, level_of, scale_times,
+                 simulate, variability_experiment)
 
 results: list[tuple[str, bool, str]] = []
 
@@ -221,6 +223,48 @@ check("20 保留 37 次的結果", len(det), 37)
 check("20 第 1 次用種子 100、第 37 次用 136", (det[0]["seed"], det[-1]["seed"]), (100, 136))
 check("20 每次的完成時間平均 = 整體平均", abs(sum(d["makespan"] for d in det) / 37 - r["makespan_sec"]["mean"]) < 0.06, True)
 check("20 每次 CT = 完成時間 ÷ 10", all(abs(d["ct"] - d["makespan"] / 10) < 0.01 for d in det), True)
+
+# 21. 分布的平均與標準差（變異與緩衝實驗用）
+x = [54.4, 71.7, 79.2, 119.3]
+check("21 連續型平均 = 各段中點平均 = 79.25", dist_mean(x, "cont"), 79.25, tol=1e-9)
+check("21 離散型平均 = 原始平均 = 81.15", dist_mean(x, "disc"), 81.15, tol=1e-9)
+import statistics
+check("21 離散型標準差 = 母體標準差", dist_sd(x, "disc"), statistics.pstdev(x), tol=1e-9)
+rng = random.Random(3)
+draws = [empirical_continuous(x, rng.random()) for _ in range(300000)]
+check("21 連續型標準差公式 ≈ 抽樣結果", abs(dist_sd(x, "cont") - statistics.pstdev(draws)) < 0.1, True)
+
+# 22. 變異倍率：平均不變、標準差變 k 倍
+v = [10.0, 12.0, 14.0, 16.0, 18.0]
+check("22 ×0：每一筆都等於平均（沒有變異）", scale_times(v, 0, "cont"), [14.0] * 5)
+check("22 ×1：跟原始資料一樣", [round(a, 9) for a in scale_times(v, 1, "cont")], v)
+w = scale_times(v, 2, "cont")
+check("22 ×2：平均不變", dist_mean(w, "cont"), dist_mean(v, "cont"), tol=1e-9)
+check("22 ×2：標準差變 2 倍", dist_sd(w, "cont"), 2 * dist_sd(v, "cont"), tol=1e-9)
+check("22 平衡產線：平均移到 20 秒、標準差不變", (round(dist_mean(scale_times(v, 1, "cont", 20), "cont"), 9), round(dist_sd(scale_times(v, 1, "cont", 20), "cont"), 9)),
+      (20.0, round(dist_sd(v, "cont"), 9)))
+w = scale_times([1, 2, 30], 3, "disc")
+check("22 變異太大時截掉負值，平均還是不變", (min(w) > 0, round(dist_mean(w, "disc"), 9)), (True, 11.0))
+
+# 23. 變異與緩衝實驗：4 站平衡、變異很大的產線
+evs = [ev(st, i, d) for st in ("ST01", "ST02", "ST03", "ST04") for i, d in enumerate([6, 8, 10, 12, 14])]
+fl = flow("G01-T1", ("ST01", "ST02"), ("ST02", "ST03"), ("ST03", "ST04"))
+m = build_model(evs, fl, [], "G01", "TEST1")
+x = variability_experiment(m, n_sets=80, reps=15)
+pct = {row["mult"]: [c["pct"] for c in row["cells"]] for row in x["rows"]}
+check("23 名義產出 = 3600 ÷ 平均 10 秒 = 360 組/時", x["nominal"], 360.0)
+check("23 沒有變異（×0）→ 不管緩衝多少都是 100%", pct[0.0], [100.0] * 5)
+check("23 變異越大，緩衝 1 的達成率越低", pct[0.0][0] > pct[1.0][0] > pct[2.0][0] > pct[3.0][0], True)
+check("23 同樣變異 ×2，緩衝越大達成率越高", pct[2.0][0] < pct[2.0][2] < pct[2.0][4], True)
+needs = [row["need"] if row["need"] is not None else 99 for row in x["rows"]]
+check("23 需要的緩衝隨變異增加（不會變少）", all(a <= b for a, b in zip(needs, needs[1:])), True)
+check("23 需要的緩衝：×0 只要 1 件、×3 要超過 1 件", (needs[0], needs[-1] > 1), (1, True))
+#     不平衡（ST04 慢很多）：瓶頸前面永遠有料，緩衝幾乎沒有差別
+evs2 = [e for e in evs if e["station_id"] != "ST04"] + [ev("ST04", i, d) for i, d in enumerate([28, 29, 30, 31, 32])]
+m2 = build_model(evs2, fl, [], "G01", "TEST1")
+x2 = variability_experiment(m2, n_sets=80, reps=15, balanced=False)
+row2 = next(r for r in x2["rows"] if r["mult"] == 2.0)
+check("23 不平衡產線：緩衝 1 和 10 差不到 2%", abs(row2["cells"][0]["pct"] - row2["cells"][-1]["pct"]) < 2, True)
 
 fails = [x for x in results if not x[1]]
 for name, ok, msg in results:
