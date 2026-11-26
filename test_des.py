@@ -1,4 +1,4 @@
-"""離散事件模擬（des.py）驗證：用「固定作業時間」的小例子，答案可以用手算（寫在註解裡）。
+"""經驗分布模擬（des.py）驗證：用「固定作業時間」的小例子，答案可以用手算（寫在註解裡）。
 
 用法（在 backend 資料夾）：python test_des.py
 """
@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import sys
 
-from des import build_model, simulate
+from des import build_model, empirical_continuous, empirical_discrete, level_of, simulate
 
 results: list[tuple[str, bool, str]] = []
 
@@ -95,6 +95,56 @@ a = simulate(m, n_sets=200, reps=50, seed=7)
 b = simulate(m, n_sets=200, reps=50, seed=7)
 check("9 同種子結果相同", a["makespan_sec"], b["makespan_sec"])
 check("9 抽樣平均接近 12.5 秒", abs(a["line_ct_sec"]["mean"] - 12.5) < 0.5, True)
+
+# 10. 連續型經驗分布（分段線性，Law & Kelton）：G23 第 1 次測試 ST08 的 4 筆 54.4、71.7、79.2、119.3
+#     U = 0.5 → P = (4−1)×0.5 = 1.5 → I = 2 → 71.7 + (1.5−2+1)×(79.2−71.7) = 75.45
+x = [54.4, 71.7, 79.2, 119.3]
+check("10 連續型 U=0.5", empirical_continuous(x, 0.5), 75.45)
+check("10 連續型 U=0 = 最小值", empirical_continuous(x, 0.0), 54.4)
+check("10 連續型 U→1 = 最大值", empirical_continuous(x, 0.999999), 119.3, tol=1e-3)
+check("10 連續型 U=1/3 = 第 2 筆", empirical_continuous(x, 1 / 3), 71.7, tol=1e-9)
+#     只有 1 筆：每次都是那 1 筆
+check("10 連續型 只有 1 筆", empirical_continuous([42.0], 0.7), 42.0)
+
+# 11. 離散型經驗分布（重抽樣）：每筆機率 1/4；U=0.5 → 第 3 筆 79.2；U=0.24 → 第 1 筆
+check("11 離散型 U=0.5", empirical_discrete(x, 0.5), 79.2)
+check("11 離散型 U=0.24", empirical_discrete(x, 0.24), 54.4)
+import random
+rng = random.Random(1)
+cont = [empirical_continuous(x, rng.random()) for _ in range(200000)]
+check("11 連續型抽樣都在最小～最大之間", min(cont) >= 54.4 and max(cont) <= 119.3, True)
+#     分段線性的平均 = 各段中點的平均 = (63.05 + 75.45 + 99.25) / 3 = 79.25
+check("11 連續型抽樣平均 ≈ 79.25", abs(sum(cont) / len(cont) - 79.25) < 0.2, True)
+rng = random.Random(1)
+disc = [empirical_discrete(x, rng.random()) for _ in range(200000)]
+check("11 離散型只會抽到原始值", set(disc) == set(x), True)
+check("11 離散型抽樣平均 ≈ 原始平均 81.15", abs(sum(disc) / len(disc) - 81.15) < 0.3, True)
+
+# 12. 資料量等級：<10、10~29、≥30、≥100
+check("12 等級 9 筆", level_of(9)["code"], "few")
+check("12 等級 29 筆", level_of(29)["code"], "low")
+check("12 等級 30 筆", level_of(30)["code"], "ok")
+check("12 等級 100 筆", level_of(100)["code"], "best")
+
+# 13. 資料來源：本場 3 筆（10 秒）、本組第 2 次 5 筆（12 秒）、別組 40 筆（30 秒）
+evs = [ev("ST01", i, 10) for i in range(3)] + [ev("ST01", i, 12, rnd="TEST2") for i in range(5)] \
+    + [ev("ST01", i % 60, 30, g="G02") for i in range(40)]
+fl = flow("G01-T1", ("ST01", ""))
+n_of = lambda src: build_model(evs, fl, [], "G01", "TEST1", source=src)["stations"][0]["pool"]["n"]
+check("13 只用本場 = 3 筆", n_of("round"), 3)
+check("13 本場 + 本組 = 8 筆", n_of("group"), 8)
+check("13 本場 + 全班 = 43 筆", n_of("class"), 43)
+check("13 自動補到 30：本場 3 + 本組 5 不夠 → 再加全班 = 48 筆", n_of("auto30"), 48)
+m = build_model(evs, fl, [], "G01", "TEST1", source="class")
+check("13 加入資料平均差 200% → 提醒", m["stations"][0]["diff_warn"], True)
+m = build_model(evs, fl, [], "G01", "TEST1", source="group")
+check("13 加入本組資料平均差 20% → 不提醒", m["stations"][0]["diff_warn"], False)
+#     本場 3 筆 + 本組 30 筆 → 自動補到 30 只加本組，不加全班
+evs2 = [ev("ST01", i, 10) for i in range(3)] + [ev("ST01", i % 60, 12, rnd="TEST2") for i in range(30)] \
+     + [ev("ST01", i, 30, g="G02") for i in range(40)]
+check("13 自動補到 30：本組夠了就不加全班", build_model(evs2, fl, [], "G01", "TEST1", source="auto30")["stations"][0]["pool"]["n"], 33)
+#     實際結果只用本場（加入的資料只影響加工時間的分布）
+check("13 實際結果只算本場", m["actual"]["events"], 3)
 
 fails = [x for x in results if not x[1]]
 for name, ok, msg in results:

@@ -61,14 +61,14 @@ def run_compute(tick, events_json, flows_json, modes_json):
     return json.dumps({"message": message, "data": data}, ensure_ascii=False, default=str)
 
 from des import build_model, simulate
-def des_model(group, rnd, data_json):
+def des_model(group, rnd, source, data_json):
     d = json.loads(data_json)
-    m = build_model(d["events"], d["flows"], d["limits"], group, rnd)
+    m = build_model(d["events"], d["flows"], d["limits"], group, rnd, source)
     m.pop("times", None)
     return json.dumps(m, ensure_ascii=False, default=str)
-def des_run(group, rnd, data_json, params_json):
+def des_run(group, rnd, source, data_json, params_json):
     d, p = json.loads(data_json), json.loads(params_json)
-    m = build_model(d["events"], d["flows"], d["limits"], group, rnd)
+    m = build_model(d["events"], d["flows"], d["limits"], group, rnd, source)
     return json.dumps(simulate(m, **p), ensure_ascii=False, default=str)
 `);
       const fn = py.globals.get("run_compute");
@@ -77,8 +77,8 @@ def des_run(group, rnd, data_json, params_json):
       return {
         version: py.version,
         compute: (tick, ev, fl, md) => JSON.parse(fn(tick, JSON.stringify(ev), JSON.stringify(fl), JSON.stringify(md))),
-        desModel: (g, r, data) => JSON.parse(fModel(g, r, JSON.stringify(data))),
-        desRun: (g, r, data, params) => JSON.parse(fRun(g, r, JSON.stringify(data), JSON.stringify(params))),
+        desModel: (g, r, src, data) => JSON.parse(fModel(g, r, src, JSON.stringify(data))),
+        desRun: (g, r, src, data, params) => JSON.parse(fRun(g, r, src, JSON.stringify(data), JSON.stringify(params))),
       };
     })();
     pyReady.catch(() => { pyReady = null; });
@@ -89,7 +89,13 @@ def des_run(group, rnd, data_json, params_json):
   const results = [];   // 最新的在前面，最多保留 30 筆
   const status = { running: false, paused: false, tick: 0, run_id: null, last_check_at: null, last_check: "", message: "" };
   let timer = null, lastSig = null, checked = 0, nextId = 1, busy = false;
-  let lastData = null;   // 最近一次從資料庫讀到的資料（離散事件模擬直接用，不用再讀一次）
+  let lastData = null;   // 最近一次從資料庫讀到的資料（模擬直接用，不用再讀一次）
+  let lastDataAt = 0, dataVersion = 0, lastDataSig = "";
+  function setData(d) {   // 資料有變（有人掃碼完工、改流程）才把版本 +1，模擬區塊會自動更新經驗分布
+    const sig = JSON.stringify([d.events.length, d.events.reduce((m, e) => (String(e.finish_time) > m ? String(e.finish_time) : m), ""), d.flows, d.limits]);
+    if (sig !== lastDataSig) { lastDataSig = sig; dataVersion += 1; }
+    lastData = d; lastDataAt = Date.now();
+  }
   const nowIso = () => new Date().toISOString();
   const runIdNow = () => { const d = new Date(Date.now() + 8 * 3600e3); return d.toISOString().slice(5, 16).replace(/[-T:]/g, (c) => (c === "T" ? "-" : "")); };
   function addResult(r) {
@@ -102,7 +108,7 @@ def des_run(group, rnd, data_json, params_json):
     busy = true;
     try {
       const [events, flows, modes, limits] = await Promise.all([fetchEvents(), fetchFlows(), fetchModes(), fetchLimits()]);
-      lastData = { events, flows, limits };
+      setData({ events, flows, limits });
       // 指紋：筆數、最晚完工時間、流程、目前場次——有任何改變才重新計算
       const sig = JSON.stringify([events.length, events.reduce((m, e) => (String(e.finish_time) > m ? String(e.finish_time) : m), ""), flows, modes, limits]);
       checked += 1;
@@ -134,18 +140,19 @@ def des_run(group, rnd, data_json, params_json):
     timer = setInterval(() => step().catch(() => {}), INTERVAL_MS);
   }
 
-  async function desData() {
-    if (!lastData) {
+  async function desData(maxAgeMs = 5000) {   // 超過 5 秒沒讀就重新讀一次（即時用到剛完成的資料）
+    if (!lastData || Date.now() - lastDataAt > maxAgeMs) {
       const [events, flows, limits] = await Promise.all([fetchEvents(), fetchFlows(), fetchLimits()]);
-      lastData = { events, flows, limits };
+      setData({ events, flows, limits });
     }
     return lastData;
   }
 
   window.BrowserEngine = {
     // 離散事件模擬：model = 看模型（工站、流程、作業時間、緩衝區上限），simulate = 跑模擬
-    async desModel(group, round) { const py = await loadPython(); return py.desModel(group, round, await desData()); },
-    async simulate(group, round, params) { const py = await loadPython(); return py.desRun(group, round, await desData(), params); },
+    async desModel(group, round, source = "round") { const py = await loadPython(); return py.desModel(group, round, source, await desData()); },
+    async simulate(group, round, source, params) { const py = await loadPython(); return py.desRun(group, round, source, await desData(), params); },
+    async desRefresh() { await desData(); return dataVersion; },   // 讀最新資料，回傳資料版本
     pythonInfo: () => (pyReady ? "載入中或已載入" : "尚未載入"),
     loadPython,
     // 打開網頁先算一次（跟 Render 的 startup_snapshot 一樣），不算在執行次數裡

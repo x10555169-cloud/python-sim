@@ -65,16 +65,24 @@
     </section>
 
     <section class="card" id="desCard" hidden>
-      <h2>離散事件模擬 <span class="sub">（Discrete-Event Simulation：用這一場的實際作業時間建立模型，讓電腦「假裝生產」很多次，預測「如果……會怎樣」。Python 程式：des.py）</span></h2>
+      <h2>經驗分布模擬 <span class="sub">（Empirical Distribution：各站加工時間直接用「已完成」紀錄的分布產生，讓電腦依流程假裝生產很多次，預測「如果……會怎樣」。實務上每站至少 30 筆、100 筆以上更理想。Python 程式：des.py）</span></h2>
       <p class="hint" id="desTarget"></p>
       <div class="des-params">
+        <label>加工時間資料來源
+          <select id="desSource">
+            <option value="round">只用本場已完成資料（即時）</option>
+            <option value="group">本場 + 本組其他場次</option>
+            <option value="class">本場 + 全班同一站</option>
+            <option value="auto30">自動補到 30 筆（本場 → 本組 → 全班）</option>
+          </select></label>
+        <label>經驗分布
+          <select id="desMode">
+            <option value="cont">連續型（分段線性，建議）</option>
+            <option value="disc">離散型（重抽樣原始值）</option>
+            <option value="mean">固定平均值（沒有波動，比較用）</option>
+          </select></label>
         <label>要生產幾組<input id="desN" type="number" min="1" max="200" value="10"></label>
         <label>重複模擬次數<input id="desR" type="number" min="10" max="2000" value="200"></label>
-        <label>作業時間
-          <select id="desMode">
-            <option value="sample">從實際紀錄隨機抽（有波動）</option>
-            <option value="mean">固定用平均值（沒有波動）</option>
-          </select></label>
         <label>站間 WIP 上限
           <select id="desWip">
             <option value="db">資料庫設定（沒設定用 2）</option>
@@ -84,7 +92,8 @@
           </select></label>
         <label>亂數種子<input id="desSeed" type="number" value="2026"></label>
       </div>
-      <p class="hint">下表可以改「作業時間倍率」（例如 ST08 改成 50% = 動作改善後快一倍）和「人數」，再按「跑模擬」比較結果。</p>
+      <p class="hint">資料量：🔴 少於 10 筆僅供參考　🟡 10～29 筆初步參考　🟢 30 筆以上達實務起點　⭐ 100 筆以上理想。每 5 秒自動讀取新完成的紀錄。<br>
+        也可以改「作業時間倍率」（例如 ST08 改成 50% = 動作改善後快一倍）和「人數」，再按「跑模擬」比較結果。</p>
       <div class="table-wrap"><table id="desStations"></table></div>
       <p class="hint" id="desModelNote"></p>
       <div class="row round-actions">

@@ -77,3 +77,8 @@ select{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--li
 .des-bar i{display:block;height:100%}
 tr.des-bn td{background:var(--hl)}
 #desStTable td,#desStTable th{text-align:right}#desStTable td:first-child,#desStTable th:first-child{text-align:left}
+#desStations td{white-space:nowrap}
+#desStations small{color:var(--muted);font-size:11.5px}
+.des-cdf{color:var(--accent);vertical-align:middle}
+.des-lv{font-size:12px;white-space:nowrap}
+.des-lv-few{color:var(--bad)}.des-lv-low{color:#b7791f}.des-lv-ok{color:var(--ok)}.des-lv-best{color:var(--ok);font-weight:700}
