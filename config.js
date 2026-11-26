@@ -12,9 +12,9 @@ window.APP_CONFIG = {
 
   // Supabase 專案網址，例如 "https://abcdxyz.supabase.co"（MODE = "browser" 或 "supabase" 才需要）
   // 換資料庫（例如換成甲班）：MODE = "browser" 時只要改這兩行；老師的 API Dashboard（api.html）要另外改它檔案裡的兩行
-  SUPABASE_URL: "https://fqbsrcbxtmagczykoesv.supabase.co",
+  SUPABASE_URL: "https://iomsrjkrvuzrsluirtdj.supabase.co",
   // publishable key 可以公開放在前端（RLS 只允許讀取）
-  SUPABASE_KEY: "sb_publishable_mn0CAB_nkrDycq6DS3Q2_g_-80SlWHB",
+  SUPABASE_KEY: "sb_publishable_QmLToEOs4wEEPBnASz0dxg_o0hhtgLO",
 
   // 老師的現場系統（計時器、QR Code、監控中心）網址：網頁上各組的連結會指到這裡
   TEACHER_SITE: "https://lctsaio365.github.io/Class_A/",
